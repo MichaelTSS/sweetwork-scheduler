@@ -1,0 +1,11 @@
+{
+  "SVC_SCHEDULER": {
+    "jwt_passphrase": "what-a-great-passphrase",
+    "jwt_secret": "what-a-great-secret"
+  },
+  "REDIS": {
+    "host": "127.0.0.1",
+    "port": "6379",
+    "db": 9
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "name": "sweetwork-scheduler",
+  "version": "0.1.0",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MichaelTSS/sweetwork-scheduler.git"
+  },
+  "description": "Sweetwork Scheduler",
+  "scripts": {
+    "test": "mocha",
+    "start": "nodemon --exec babel-node -- ./bin/www"
+  },
+  "maintainers": [
+    "Michel Tresseras <m.tresseras@gmail.com>"
+  ],
+  "author": "",
+  "homepage": "https://github.com/MichaelTSS/sweetwork-scheduler",
+  "dependencies": {
+    "sweetwork-redis-client": "1.x.x",
+    "sweetwork-utils": "1.x.x",
+    "body-parser": "1.15.x",
+    "casperjs": "1.1.x",
+    "cors": "2.8.x",
+    "express": "4.14.x",
+    "express-jwt": "3.4.x",
+    "jsonwebtoken": "7.1.x",
+    "lodash": "4.16.x",
+    "moment-timezone": "0.5.x",
+    "mysql": "2.11.x",
+    "nconf": "0.8.x",
+    "q-io": "1.13.x",
+    "winston": "2.2.x"
+  },
+  "devDependencies": {
+    "babel-cli": "6.26.x",
+    "babel-core": "6.26.x",
+    "babel-eslint": "7.2.x",
+    "babel-jest": "20.0.3",
+    "babel-preset-env": "1.6.0",
+    "chai": "3.5.x",
+    "eslint": "2.10.x",
+    "eslint-config-airbnb": "9.0.x",
+    "eslint-plugin-import": "1.8.x",
+    "eslint-plugin-jsx-a11y": "1.2.x",
+    "eslint-plugin-react": "5.1.x",
+    "mocha": "3.0.x",
+    "mocha-clean": "1.0.x",
+    "supertest": "2.0.x"
+  }
+}

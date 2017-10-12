@@ -1,0 +1,64 @@
+#!/usr/bin/env node
+const service = require('../app/');
+const http = require('http');
+
+const PORT = 8081;
+
+/*
+* Setting up Winston Logger
+*/
+
+const winston = require('winston');
+winston.loggers.add('scheduler-logger', {
+  transports: [
+    new winston.transports.File({
+      name: 'info-file',
+      filename: 'scheduler-filelog-info.log',
+      level: 'info',
+    }),
+    new winston.transports.File({
+      name: 'error-file',
+      filename: 'scheduler-filelog-error.log',
+      level: 'error',
+      handleExceptions: true,
+      humanReadableUnhandledException: true,
+    }),
+  ],
+});
+const logger = require('winston').loggers.get('scheduler-logger');
+
+/*
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError(error) {
+  if (error.syscall !== 'listen') {
+    throw error;
+  }
+
+  // handle specific listen errors with friendly messages
+  switch (error.code) {
+    case 'EACCES':
+      logger.error('This server requires elevated privileges');
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      logger.error(`Port ${this} is already in use`);
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
+}
+
+// topic Manager Server
+const port = process.env.NODE_ENV === 'dev' ? 8081 : PORT;
+service.set('port', port);
+const topicsServer = http.createServer(service);
+topicsServer.listen(port, () => {
+  logger.info(
+    `Initing Scheduler Service on port ${topicsServer.address().port} with NODE_ENV ${process.env
+      .NODE_ENV}, NODE_PREFIX ${process.env.NODE_PREFIX}`
+  );
+});
+topicsServer.on('error', onError.bind(PORT));
