@@ -6,7 +6,7 @@
   "SVC_CONTROLLER": {
     "host": "http://127.0.0.1",
     "port": "8082",
-    "passphrase": "bXlBd2Vzb21lVG9waWNDbGllbnQ="
+    "passphrase": "9waWNDbGllbnQbXlBd2Vzb21lVG="
   },
   "REDIS": {
     "host": "127.0.0.1",

@@ -24,6 +24,7 @@ const TICK_INTERVAL_MS = 1000 * 5; // every 5 seconds
 const NEXT_CRAWL_DURATION = 15; // comes back in 15 minutes if not returned by Api Service
 
 const scheduler = () => {
+  logger.info('tick');
   const feedsListKey = RedisKeys.feedsList();
   cli
     .zrangebyscore({

@@ -25,28 +25,36 @@ router.use('/ping', (req, res) => {
   res.json({ success: true, message: 'Scheduler Service pong' });
 });
 
+router.get('/', (req, res) => {
+  logger.info(`Scheduler Service ${req.method} ${req.path}`);
+  res.status(200).json({
+    success: true,
+    data: [],
+    meta: [],
+  });
+});
+
 router.post('/auth', (req, res) => {
-  let error;
-  if (!req.body.service) {
-    error = new Error('Scheduler Service Auth: service body is required');
-    logger.error(error);
-    res.status(400).json({
-      message: error.message,
-      error,
-    });
-  }
-  if (!req.body.passphrase) {
-    error = new Error('Scheduler Service Auth: passphrase body is required');
-    logger.error(error);
-    res.status(400).json({
-      message: error.message,
-      error,
-    });
-  }
   const passphrase = config.get('SVC_SCHEDULER:jwt_passphrase');
   const secret = config.get('SVC_SCHEDULER:jwt_secret');
-  if (req.body.passphrase !== passphrase) {
-    error = new Error(
+  if (!req.body.service) {
+    const error = new Error('Scheduler Service Auth: service body is required');
+    logger.error(error);
+    res.status(400).json({
+      message: error.message,
+      error,
+    });
+  } else if (!req.body.passphrase) {
+    const error = new Error(
+      'Scheduler Service Auth: passphrase body is required',
+    );
+    logger.error(error);
+    res.status(400).json({
+      message: error.message,
+      error,
+    });
+  } else if (req.body.passphrase !== passphrase) {
+    const error = new Error(
       `Scheduler Service Auth: wrong passphrase ${JSON.stringify(
         req.body,
       )} vs. passphrase`,
@@ -60,21 +68,22 @@ router.post('/auth', (req, res) => {
         status: error.status,
       },
     });
+  } else {
+    const token = jwt.sign({ service: req.body.service }, secret);
+    res.status(200).json({
+      success: true,
+      token,
+    });
   }
-  const token = jwt.sign({ service: req.body.service }, secret);
-  res.status(200).json({
-    success: true,
-    token,
-  });
 });
 
 router.all('/api/v1/*', (req, res, next) => {
   // logger.info(`Scheduler Service ${req.method} ${req.originalUrl}`);
   // log by service
   const cli = new RedisClient(
-    config.get('SVC_SCHEDULER_REDIS_HOST'),
-    config.get('SVC_SCHEDULER_REDIS_PORT'),
-    config.get('REDIS_DB'),
+    config.get('REDIS:host'),
+    config.get('REDIS:port'),
+    config.get('REDIS:db'),
   );
   const unixNow = moment().unix();
   const key = RedisKeys.inboundRequestsByServiceName(req.user.service);
