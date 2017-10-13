@@ -7,13 +7,13 @@ nconf
   // Override with current environment (ex production) if exists
   .add('environment', {
     type: 'file',
-    file: path.join(__dirname, 'dev.json')
+    file: path.join(__dirname, 'dev.json'),
   })
   .defaults({
-    PORT: 10081,
+    PORT: 8081,
     REDIS_DB: 9,
     APP_DIR: __dirname,
-    BASE_DIR: __dirname.replace('/app', '')
+    BASE_DIR: __dirname.replace('/app', ''),
   });
 
 module.exports = nconf;

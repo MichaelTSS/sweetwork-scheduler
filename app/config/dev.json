@@ -1,7 +1,12 @@
 {
   "SVC_SCHEDULER": {
-    "jwt_passphrase": "what-a-great-passphrase",
+    "jwt_passphrase": "bXlBd2Vzb21lVG9waWNDbGllbnQ=",
     "jwt_secret": "what-a-great-secret"
+  },
+  "SVC_CONTROLLER": {
+    "host": "http://127.0.0.1",
+    "port": "8082",
+    "passphrase": "bXlBd2Vzb21lVG9waWNDbGllbnQ="
   },
   "REDIS": {
     "host": "127.0.0.1",

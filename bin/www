@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 const service = require('../app/');
 const http = require('http');
-
-const PORT = 8081;
+const config = require('../app/config');
 
 /*
 * Setting up Winston Logger
 */
 
 const winston = require('winston');
+
 winston.loggers.add('scheduler-logger', {
   transports: [
     new winston.transports.File({
@@ -51,14 +51,13 @@ function onError(error) {
   }
 }
 
-// topic Manager Server
-const port = process.env.NODE_ENV === 'dev' ? 8081 : PORT;
-service.set('port', port);
-const topicsServer = http.createServer(service);
-topicsServer.listen(port, () => {
+// Scheduler Server
+const PORT = config.get('PORT');
+const server = http.createServer(service);
+server.listen(PORT, () => {
   logger.info(
-    `Initing Scheduler Service on port ${topicsServer.address().port} with NODE_ENV ${process.env
-      .NODE_ENV}, NODE_PREFIX ${process.env.NODE_PREFIX}`
+    `Scheduler Service running on port ${server.address()
+      .port} (with NODE_ENV=${process.env.NODE_ENV})`,
   );
 });
-topicsServer.on('error', onError.bind(PORT));
+server.on('error', onError.bind(PORT));

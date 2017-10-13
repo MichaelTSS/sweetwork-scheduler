@@ -3,7 +3,7 @@ const router = require('express').Router({ strict: true });
 const logger = require('winston').loggers.get('scheduler-logger');
 const TopicManager = require('../models/redis/topics-manager');
 
-router.get('/(:topic_id)?', (req, res, next) => {
+router.get('/(:topic_id)?', (req, res) => {
   logger.info(`GET /api/v1/topics ${JSON.stringify(req.params)}`);
   let topicIds = [];
   if (req.params && req.params.topic_id) topicIds = [req.params.topic_id];
@@ -11,11 +11,11 @@ router.get('/(:topic_id)?', (req, res, next) => {
   const clientId = req.query.client_id;
   const availableQueryParameters = {
     client_id: {
-      type: 'optional'
+      type: 'optional',
     },
     topic_ids: {
-      type: 'optional'
-    }
+      type: 'optional',
+    },
   };
   //
   TopicManager.get(clientId, topicIds).then(
@@ -25,26 +25,27 @@ router.get('/(:topic_id)?', (req, res, next) => {
         topics,
         meta: {
           available_query_parameters: availableQueryParameters,
-          num_topics: topics.length
-        }
+          num_topics: topics.length,
+        },
       });
     },
     err => {
       res.json({
         success: false,
         meta: {
-          available_query_parameters: availableQueryParameters
+          available_query_parameters: availableQueryParameters,
         },
         error: {
           name: err.name,
-          message: err.message
-        }
+          message: err.message,
+        },
       });
-    }
+    },
   );
 });
 
-router.post('/', (req, res, next) => {
+router.post('/', (req, res) => {
+  /* eslint-disable camelcase */
   TopicManager.store(req.body.topics).then(
     num_topics => {
       res.json({ success: true, num_topics });
@@ -54,14 +55,14 @@ router.post('/', (req, res, next) => {
         success: false,
         error: {
           name: err.name,
-          message: err.message
-        }
+          message: err.message,
+        },
       });
-    }
+    },
   );
 });
 
-router.delete('/:topic_id', (req, res, next) => {
+router.delete('/:topic_id', (req, res) => {
   TopicManager.delete(req.params.topic_id).then(
     () => {
       res.json({ success: true });
@@ -71,10 +72,10 @@ router.delete('/:topic_id', (req, res, next) => {
         success: false,
         error: {
           name: err.name,
-          message: err.message
-        }
+          message: err.message,
+        },
       });
-    }
+    },
   );
 });
 

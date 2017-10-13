@@ -9,7 +9,10 @@
   "description": "Sweetwork Scheduler",
   "scripts": {
     "test": "mocha",
-    "start": "nodemon --exec babel-node -- ./bin/www"
+    "start": "nodemon --exec babel-node -- ./bin/www",
+    "eslint": "eslint .;exit 0",
+    "prettier": "prettier-eslint --write \"src/**/*.js\" --list-different",
+    "precommit": "lint-staged"
   },
   "maintainers": [
     "Michel Tresseras <m.tresseras@gmail.com>"
@@ -17,35 +20,49 @@
   "author": "",
   "homepage": "https://github.com/MichaelTSS/sweetwork-scheduler",
   "dependencies": {
-    "sweetwork-redis-client": "1.x.x",
-    "sweetwork-utils": "1.x.x",
+    "async": "^2.5.0",
+    "axios": "0.16.2",
     "body-parser": "1.15.x",
     "casperjs": "1.1.x",
     "cors": "2.8.x",
     "express": "4.14.x",
     "express-jwt": "3.4.x",
+    "idx": "2.1.0",
     "jsonwebtoken": "7.1.x",
     "lodash": "4.16.x",
     "moment-timezone": "0.5.x",
     "mysql": "2.11.x",
     "nconf": "0.8.x",
     "q-io": "1.13.x",
+    "query-string": "5.0.0",
+    "sweetwork-redis-client": "1.x.x",
+    "sweetwork-utils": "1.x.x",
     "winston": "2.2.x"
   },
   "devDependencies": {
-    "babel-cli": "6.26.x",
-    "babel-core": "6.26.x",
-    "babel-eslint": "7.2.x",
-    "babel-jest": "20.0.3",
+    "babel-cli": "6.26.0",
+    "babel-core": "6.26.0",
+    "babel-eslint": "7.2.3",
     "babel-preset-env": "1.6.0",
     "chai": "3.5.x",
-    "eslint": "2.10.x",
-    "eslint-config-airbnb": "9.0.x",
-    "eslint-plugin-import": "1.8.x",
-    "eslint-plugin-jsx-a11y": "1.2.x",
-    "eslint-plugin-react": "5.1.x",
+    "eslint": "4.8.0",
+    "eslint-config-airbnb": "16.0.0",
+    "eslint-config-prettier": "2.3.0",
+    "eslint-plugin-import": "2.7.0",
+    "eslint-plugin-jsx-a11y": "6.0.2",
+    "eslint-plugin-prettier": "2.1.2",
+    "eslint-plugin-react": "7.4.0",
     "mocha": "3.0.x",
     "mocha-clean": "1.0.x",
+    "nodemon": "1.11.0",
+    "prettier": "1.7.0",
+    "prettier-eslint-cli": "4.1.1",
     "supertest": "2.0.x"
+  },
+  "lint-staged": {
+    "src/**/*.js": [
+      "prettier-eslint --write",
+      "git add"
+    ]
   }
 }
