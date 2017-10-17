@@ -10,7 +10,8 @@ const app = express();
 const secret = config.get('SVC_SCHEDULER:jwt_secret');
 const jwtCheck = require('express-jwt')({ secret });
 const routes = require('./routes/index-router');
-require('./scheduler');
+// require('./scheduler');
+require('./scheduler/index-async');
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
