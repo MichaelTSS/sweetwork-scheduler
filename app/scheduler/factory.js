@@ -83,6 +83,7 @@ module.exports = class Factory {
     try {
       await controller.auth('Scheduler');
       await controller.search(feedToSearch);
+      return true;
     } catch (e) {
       logger.error(e);
       const key = RedisKeys.feedErrorBands(
@@ -100,6 +101,7 @@ module.exports = class Factory {
       } else {
         this.createHole(feedToSearch.timestamp_from);
       }
+      return false;
     }
   }
 
@@ -153,25 +155,33 @@ module.exports = class Factory {
     }
   }
 
-  async markAsBusy(key) {
-    if (this.feedHash.status === 'busy') {
-      logger.warn('Already masked as busy');
+  async markStatus(key, status) {
+    if (this.feedHash.status === status) {
+      logger.warn(`Already masked as ${status}`);
     } else {
       try {
-        await cli.hset({ key, field: 'status', value: 'busy' });
+        await cli.hset({ key, field: 'status', value: status });
       } catch (e) {
         logger.warn(
-          `Could not set status from "${this.feedHash.status}" to "busy"`,
+          `Could not set status from "${this.feedHash.status}" to "${status}"`,
         );
       }
     }
+  }
+
+  async markAsBusy(key) {
+    await this.markStatus(key, 'busy');
+  }
+  async markAsIdle(key) {
+    // unused for now
+    await this.markStatus(key, 'idle');
   }
 
   async setToCrawlAgain(member, duration) {
     /* eslint-disable no-param-reassign */
     try {
       duration = this.feedHash.last_time_crawl ? duration : 3 * duration;
-      const score = moment().unix() + 60 * duration;
+      const score = moment().unix() + 60 * duration; // in one hour
       const feedsListKey = RedisKeys.feedsList();
       await cli.zadd({ key: feedsListKey, scomembers: [score, member] });
     } catch (e) {

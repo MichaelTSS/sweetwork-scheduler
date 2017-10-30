@@ -81,7 +81,9 @@ const SOURCE_SETTINGS = {
 
 router.post(
   '/',
-  (req, res, next) => {
+  async (req, res, next) => {
+    logger.debug('Stage 1');
+    logger.debug(JSON.stringify(req.body));
     logger.info(`Was requested to update ${req.body.source}:${req.body.id}`);
     try {
       if (!req.body.id && !req.body.source) {
@@ -112,7 +114,8 @@ router.post(
         .json({ success: false, error: e, where: 'check-if-feed-exists' });
     }
   },
-  (req, res, next) => {
+  async (req, res, next) => {
+    logger.debug('Stage 2');
     try {
       if (req.body.error) {
         // the error
@@ -164,7 +167,8 @@ router.post(
         .json({ success: false, error: e, where: 'create-error-plot-lines' });
     }
   },
-  (req, res, next) => {
+  async (req, res, next) => {
+    logger.debug('Stage 3');
     try {
       const key = RedisKeys.feedErrorBands(req.body.id, req.body.source);
       cli.zcount({ key }).then(count => {
@@ -257,7 +261,8 @@ router.post(
         .json({ success: false, error: e, where: 'create-error-plot-bands' });
     }
   },
-  (req, res, next) => {
+  async (req, res, next) => {
+    logger.debug('Stage 4');
     try {
       if (req.body.ticks && req.body.ticks.length > 0) {
         // ticks are a list of millisecond timestamps
@@ -300,7 +305,8 @@ router.post(
       res.status(500).json({ success: false, error: e, where: 'create-ticks' });
     }
   },
-  (req, res, next) => {
+  async (req, res, next) => {
+    logger.debug('Stage 5');
     try {
       const feedKey = RedisKeys.feed(req.body.id, req.body.source);
       req.body.density = utils.computeDensity(
@@ -312,38 +318,7 @@ router.post(
       if (req.body.error) {
         if (req.body.ticks.length > 0) {
           // Fix density if ticks but errored (compute density on ticks timestamps)
-          cli
-            .hmset({
-              key: feedKey,
-              hash: {
-                id: req.body.id,
-                source: req.body.source,
-                entity: req.body.entity,
-                timestamp_to: req.body.timestamp_to,
-                density: req.body.density,
-                status: 'errored',
-                last_time_crawl: unixNow,
-              },
-            })
-            .catch(logger.error);
-        } else {
-          // Do not set density if no ticks and errored (crawl again based on the stored density) and don't update density
-          cli
-            .hmset({
-              key: feedKey,
-              hash: {
-                id: req.body.id,
-                source: req.body.source,
-                entity: req.body.entity,
-                status: 'errored',
-                last_time_crawl: unixNow,
-              },
-            })
-            .catch(logger.error);
-        }
-      } else {
-        cli
-          .hmset({
+          await cli.hmset({
             key: feedKey,
             hash: {
               id: req.body.id,
@@ -351,11 +326,36 @@ router.post(
               entity: req.body.entity,
               timestamp_to: req.body.timestamp_to,
               density: req.body.density,
-              status: 'idle',
+              status: 'errored',
               last_time_crawl: unixNow,
             },
-          })
-          .catch(logger.error);
+          });
+        } else {
+          // Do not set density if no ticks and errored (crawl again based on the stored density) and don't update density
+          await cli.hmset({
+            key: feedKey,
+            hash: {
+              id: req.body.id,
+              source: req.body.source,
+              entity: req.body.entity,
+              status: 'errored',
+              last_time_crawl: unixNow,
+            },
+          });
+        }
+      } else {
+        await cli.hmset({
+          key: feedKey,
+          hash: {
+            id: req.body.id,
+            source: req.body.source,
+            entity: req.body.entity,
+            timestamp_to: req.body.timestamp_to,
+            density: req.body.density,
+            status: 'idle',
+            last_time_crawl: unixNow,
+          },
+        });
       }
       next();
     } catch (e) {
@@ -365,11 +365,12 @@ router.post(
         .json({ success: false, error: e, where: 'update-feed-hash' });
     }
   },
-  (req, res) => {
+  async (req, res) => {
+    logger.debug('Stage 6');
     try {
       let nextTickCrawl = moment()
         .add(90, 'minutes')
-        .unix(); // if there is something wrong, next time is set in 90 minutes
+        .unix(); // if there is something wrong, crawl again in 90 minutes
       const unixNow = moment().unix();
       const feedKey = RedisKeys.feed(req.body.id, req.body.source);
       if (

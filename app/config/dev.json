@@ -12,5 +12,17 @@
     "host": "127.0.0.1",
     "port": "6379",
     "db": 9
+  },
+  "MYSQL": {
+    "host": "35.189.67.109",
+    "user": "formidableuser",
+    "database": "sweetwork",
+    "password": "myawesomepassword",
+    "charset": "UTF8_GENERAL_CI",
+    "ssl": {
+      "ca": "/Users/michaeltresseras/code/sweetwork/server-ca.pem",
+      "cert": "/Users/michaeltresseras/code/sweetwork/client-cert.pem",
+      "key": "/Users/michaeltresseras/code/sweetwork/client-key.pem"
+    }
   }
 }

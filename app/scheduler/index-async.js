@@ -45,11 +45,15 @@ async function schedulerAsync() {
     await factory.markAsBusy(member);
     await factory.getDataFromTopics();
     factory.printState();
-    await factory.search();
+    const isSuccess = await factory.search();
 
     // crawl again in 15 minutes so the scheduler picks it up
     // even if the controller has failed to get back to up
-    await factory.setToCrawlAgain(member, NEXT_CRAWL_DURATION);
+    if (!isSuccess) {
+      await factory.setToCrawlAgain(member, 1); // try again in one minute
+    } else {
+      await factory.setToCrawlAgain(member, NEXT_CRAWL_DURATION);
+    }
   } catch (e) {
     logger.error(e);
   }

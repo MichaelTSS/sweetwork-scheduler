@@ -14,9 +14,7 @@
     "prettier": "prettier-eslint --write \"src/**/*.js\" --list-different",
     "precommit": "lint-staged"
   },
-  "maintainers": [
-    "Michel Tresseras <m.tresseras@gmail.com>"
-  ],
+  "maintainers": ["Michel Tresseras <m.tresseras@gmail.com>"],
   "author": "",
   "homepage": "https://github.com/MichaelTSS/sweetwork-scheduler",
   "dependencies": {
@@ -31,7 +29,7 @@
     "jsonwebtoken": "7.1.x",
     "lodash": "4.16.x",
     "moment-timezone": "0.5.x",
-    "mysql": "2.11.x",
+    "mysql": "2.11.1",
     "nanotimer": "^0.3.15",
     "nconf": "0.8.x",
     "q-io": "1.13.x",
@@ -61,9 +59,6 @@
     "supertest": "2.0.x"
   },
   "lint-staged": {
-    "src/**/*.js": [
-      "prettier-eslint --write",
-      "git add"
-    ]
+    "src/**/*.js": ["prettier-eslint --write", "git add"]
   }
 }

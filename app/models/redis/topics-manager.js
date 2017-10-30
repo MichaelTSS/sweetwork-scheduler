@@ -1,5 +1,5 @@
 /* eslint-disable max-len, no-param-reassign, no-underscore-dangle */
-'use strict';
+
 const moment = require('moment-timezone');
 const _ = require('lodash');
 
@@ -8,10 +8,19 @@ const RedisKeys = require('../../redis-keys');
 const logger = require('winston').loggers.get('scheduler-logger');
 const RedisClient = require('sweetwork-redis-client');
 const FeedsManager = require('./feeds-manager');
-const cli = new RedisClient(config.get('SVC_SCHEDULER_REDIS_HOST'), config.get('SVC_SCHEDULER_REDIS_PORT'), config.get('REDIS_DB'));
+
+const cli = new RedisClient(
+  config.get('SVC_SCHEDULER_REDIS_HOST'),
+  config.get('SVC_SCHEDULER_REDIS_PORT'),
+  config.get('REDIS_DB'),
+);
 
 const TOPIC_DEL_FIELDS = ['last_time_crawl', 'keywords_json'];
-const TOPIC_PROFILES_JSON_FIELDS = ['included_profiles', 'restricted_profiles', 'excluded_profiles'];
+const TOPIC_PROFILES_JSON_FIELDS = [
+  'included_profiles',
+  'restricted_profiles',
+  'excluded_profiles',
+];
 const TOPIC_JSON_FIELDS = ['custom', 'or', 'and', 'exclude'];
 const TOPIC_ARRAY_FIELDS = ['sources', 'languages', 'countries'];
 const TOPIC_NUMBER_FIELDS = ['client_id'];
@@ -35,7 +44,9 @@ class TopicsManager {
      * @return {string} grade from 'A' thru 'F'
      */
   static _computreReadTimeGrade(lastTimeCrawl) {
-    const duration = moment.duration(moment() - moment.unix(lastTimeCrawl)).asSeconds();
+    const duration = moment
+      .duration(moment() - moment.unix(lastTimeCrawl))
+      .asSeconds();
     if (duration > 3600) return 'F';
     else if (duration > 1800) {
       // over 1 hour
@@ -71,13 +82,17 @@ class TopicsManager {
       topicHash.keywords_cs = `(${keywordsCs.join(' OR ')})`;
     }
     TOPIC_ARRAY_FIELDS.forEach(field => {
-      if (topicHash && Array.isArray(topicHash[field])) topicHash[field] = topicHash[field].join(',');
+      if (topicHash && Array.isArray(topicHash[field]))
+        topicHash[field] = topicHash[field].join(',');
     });
     TOPIC_DEL_FIELDS.forEach(field => {
       if (topicHash) delete topicHash[field];
     });
     TOPIC_JSON_FIELDS.forEach(field => {
-      if (topicHash) topicHash[field] = topicHash[field] ? JSON.stringify(topicHash[field]) : JSON.stringify([]);
+      if (topicHash)
+        topicHash[field] = topicHash[field]
+          ? JSON.stringify(topicHash[field])
+          : JSON.stringify([]);
     });
     TOPIC_PROFILES_JSON_FIELDS.forEach(field => {
       if (topicHash && Array.isArray(topicHash[field])) {
@@ -88,13 +103,13 @@ class TopicsManager {
               id: profile.id,
               full_name: profile.full_name,
               rss: [],
-              accounts: []
+              accounts: [],
             };
             if (Array.isArray(profile.rss)) {
               profile.rss.forEach(rss => {
                 p.rss.push({
                   id: rss.url,
-                  network: 'rss'
+                  network: 'rss',
                 });
               });
             }
@@ -102,7 +117,7 @@ class TopicsManager {
               profile.accounts.forEach(account => {
                 p.accounts.push({
                   id: account.original_platform_user_id,
-                  network: account.network
+                  network: account.network,
                 });
               });
             }
@@ -124,11 +139,16 @@ class TopicsManager {
      */
   static _postStoreProcess(topicHash) {
     TOPIC_ARRAY_FIELDS.forEach(field => {
-      if (topicHash && topicHash[field] && topicHash[field].split) topicHash[field] = topicHash[field].split(',');
+      if (topicHash && topicHash[field] && topicHash[field].split)
+        topicHash[field] = topicHash[field].split(',');
       else if (topicHash[field] === '') topicHash[field] = [];
     });
     TOPIC_NUMBER_FIELDS.forEach(field => {
-      if (topicHash && topicHash[field] && isFinite(parseInt(topicHash[field], 10))) {
+      if (
+        topicHash &&
+        topicHash[field] &&
+        isFinite(parseInt(topicHash[field], 10))
+      ) {
         topicHash[field] = parseInt(topicHash[field], 10);
       }
     });
@@ -140,7 +160,11 @@ class TopicsManager {
       }
     });
     TOPIC_PROFILES_JSON_FIELDS.forEach(field => {
-      if (topicHash && topicHash[field] && typeof topicHash[field] === 'string') {
+      if (
+        topicHash &&
+        topicHash[field] &&
+        typeof topicHash[field] === 'string'
+      ) {
         try {
           topicHash[field] = JSON.parse(topicHash[field]);
         } catch (e) {
@@ -150,7 +174,9 @@ class TopicsManager {
     });
     if (topicHash.feeds && topicHash.feeds.length > 0) {
       // last_time_crawl
-      const lastTimeCrawl = Math.round(_.meanBy(topicHash.feeds, x => x.last_time_crawl)); // cf. https://lodash.com/docs/4.16.4#meanBy
+      const lastTimeCrawl = Math.round(
+        _.meanBy(topicHash.feeds, x => x.last_time_crawl),
+      ); // cf. https://lodash.com/docs/4.16.4#meanBy
       if (isFinite(lastTimeCrawl)) topicHash.last_time_crawl = lastTimeCrawl;
       else topicHash.last_time_crawl = null;
       // density
@@ -158,7 +184,10 @@ class TopicsManager {
       if (isFinite(density)) topicHash.density = density;
       else topicHash.density = null;
       // last time crawl human
-      if (topicHash.last_time_crawl) topicHash.last_time_crawl_human = moment.unix(topicHash.last_time_crawl).fromNow();
+      if (topicHash.last_time_crawl)
+        topicHash.last_time_crawl_human = moment
+          .unix(topicHash.last_time_crawl)
+          .fromNow();
       else topicHash.last_time_crawl_human = null;
     }
     return topicHash;
@@ -174,86 +203,74 @@ class TopicsManager {
      * @param  {number} feedId optional
      * @return {function} promise - resolves with an array of topics or rejects with an error
      */
-  static get(clientId, topicIds = [], withoutFeeds = false) {
+  static async get(clientId, topicIds = [], withoutFeeds = false) {
     // logger.info(`Gettings topics for topicIds ${JSON.stringify(topicIds)}`);
-    const dList = [];
-    function getTopicsKeys() {
-      return new Promise((resolve, reject) => {
-        if (topicIds.length > 0) {
-          const topicKeys = [];
-          topicIds.forEach(topicId => {
-            topicKeys.push(RedisKeys.topic(topicId));
-          });
-          resolve(topicKeys);
-        } else if (clientId) {
-          cli
-            .zrangebyscore({
-              key: RedisKeys.topicsListByClientId(clientId),
-              withscores: false,
-              limit: Math.pow(10, 3)
-            })
-            .then(topicKeys => resolve(topicKeys));
-        } else reject(new TopicsManagerError('Missing parameters: clientId or topicIds'));
-      });
-    }
-    return new Promise((resolve, reject) => {
-      getTopicsKeys().then(
-        topicKeys => {
-          // logger.info(`Gettings topics for topicKeys ${topicKeys}`);
-          if (topicKeys.length === 0) resolve([]);
-          const topics = [];
-          topicKeys.forEach(topicKey => {
-            dList.push(
-              new Promise((rslv, rjct) => {
-                cli.hgetall({ key: topicKey }).then(
-                  topicHash => {
-                    if (topicHash === null) {
-                      rslv();
-                      return;
-                    }
-                    topicHash = TopicsManager._postStoreProcess(topicHash);
-                    if (withoutFeeds) {
-                      topics.push(topicHash);
-                      rslv();
-                    } else {
-                      const feedManager = new FeedsManager(topicHash);
-                      feedManager.read().then(
-                        feeds => {
-                          topicHash.feeds = feeds;
-                          topics.push(topicHash);
-                          rslv();
-                        },
-                        e => {
-                          logger.error(`TopicsManager.get feedManager.read reject ${e}`);
-                          rjct(e);
-                        }
-                      );
-                    }
-                  },
-                  e => {
-                    logger.error(`TopicsManager.get hgetall topicKey (B) ${e}`);
-                    rjct(e);
-                  }
-                );
-              })
-            );
-          });
-          Promise.all(dList).then(
-            () => {
-              resolve(topics);
-            },
-            e => {
-              logger.error(`TopicsManager.get dList reject ${e}`);
-              reject(e);
-            }
-          );
-        },
-        e => {
-          logger.error(`TopicsManager.get getTopicsKeys reject ${e}`);
-          reject(e);
-        }
+    async function getTopicsKeys(cId, tIds) {
+      // 1.1 get the topics from the topics ids
+      if (tIds.length > 0) {
+        const topicKeys = [];
+        tIds.forEach(topicId => {
+          topicKeys.push(RedisKeys.topic(topicId));
+        });
+        return Promise.resolve(topicKeys);
+      } else if (cId) {
+        // 1.2 get the topics from the client id
+        const topicKeys = await cli.zrangebyscore({
+          key: RedisKeys.topicsListByClientId(cId),
+          withscores: false,
+          limit: 10 ** 3,
+        });
+        return Promise.resolve(topicKeys);
+      }
+      // 1.3 fail because there is no data
+      const error = new TopicsManagerError(
+        'Missing parameters: clientId or topicIds',
       );
-    });
+      return Promise.reject(error);
+    }
+    //
+    try {
+      const topicKeys = await getTopicsKeys(clientId, topicIds);
+      if (topicKeys.length === 0) {
+        return Promise.resolve([]);
+      }
+      const topics = [];
+      const promises = [];
+      topicKeys.forEach(topicKey => {
+        promises.push(
+          new Promise(async (rslv, rjct) => {
+            try {
+              // 1. get the hash with data for that topic
+              let topicHash = await cli.hgetall({ key: topicKey });
+              // 1.1 ignore if that hash is null
+              if (topicHash === null) {
+                rslv();
+                return;
+              }
+              // 2. make that hash "human friendly"
+              topicHash = TopicsManager._postStoreProcess(topicHash);
+              // 3. get the feeds (or ignore the feeds)
+              if (!withoutFeeds) {
+                const feedManager = new FeedsManager(topicHash);
+                topicHash.feeds = await feedManager.read();
+              }
+              topics.push(topicHash);
+              rslv();
+              // 4. done
+            } catch (e) {
+              logger.error(`TopicsManager.get hgetall topicKey (B) ${e}`);
+              rjct(e);
+            }
+          }),
+        );
+      });
+      //
+      await Promise.all(promises);
+      return Promise.resolve(topics);
+    } catch (e) {
+      logger.error(e);
+      return Promise.reject(e);
+    }
   }
   /**
      * store - will store the array of topics passed as an argument
@@ -261,64 +278,46 @@ class TopicsManager {
      * @param  {array} topics mandatory, array of topic objects to be stored
      * @return {function} promise
      */
-  static store(topics) {
-    const dList = [];
-    return new Promise((resolve, reject) => {
-      if (!topics || !Array.isArray(topics) || (Array.isArray(topics) && topics.length === 0)) {
-        const err = new TopicsManagerError('Missing topics in request body');
-        reject(err);
-      } else {
-        topics.forEach(topic => {
-          // store the topic-client association
-          dList.push(
-            cli.zadd({
+  static async store(topics) {
+    const promises = [];
+    if (!topics || !Array.isArray(topics) || topics.length === 0) {
+      const err = new TopicsManagerError('Missing topics in request body');
+      return Promise.reject(err);
+    }
+    topics.forEach(topic => {
+      promises.push(
+        new Promise(async (resolve, reject) => {
+          try {
+            // store the topic-client association
+            await cli.zadd({
               key: RedisKeys.topicsListByClientId(topic.client_id),
-              scomembers: [moment().unix(), RedisKeys.topic(topic.id)]
-            })
-          );
-          // update feeds
-          const feedsManager = new FeedsManager(topic);
-          dList.push(
-            new Promise((rslv, rjct) => {
-              feedsManager.update().then(
-                () => {
-                  // store actual topic
-                  const topicToStore = this._preStoreProcess(topic);
-                  // logger.info(`Creating topic ${JSON.stringify(topicToStore)}`);
-                  cli
-                    .hmset({
-                      key: RedisKeys.topic(topicToStore.id),
-                      hash: topicToStore
-                    })
-                    .then(
-                      () => {
-                        rslv();
-                      },
-                      e => {
-                        logger.error(`TopicsManager.store hmset ${e}`);
-                        rjct(e);
-                      }
-                    );
-                },
-                e => {
-                  logger.error(`TopicsManager.store feedsManager.update reject ${e}`);
-                  rjct(e);
-                }
-              );
-            })
-          );
-        });
-        Promise.all(dList).then(
-          () => {
-            resolve(topics.length);
-          },
-          e => {
-            logger.error(`TopicsManager.store dList reject ${e}`);
+              scomembers: [moment().unix(), RedisKeys.topic(topic.id)],
+            });
+            // update feeds
+            const feedsManager = new FeedsManager(topic);
+            await feedsManager.update();
+            // store actual topic
+            const topicToStore = this._preStoreProcess(topic);
+            // logger.info(`Creating topic ${JSON.stringify(topicToStore)}`);
+            await cli.hmset({
+              key: RedisKeys.topic(topicToStore.id),
+              hash: topicToStore,
+            });
+            resolve();
+          } catch (e) {
             reject(e);
           }
-        );
-      }
+        }),
+      );
     });
+    //
+    try {
+      await Promise.all(promises);
+      return Promise.resolve(topics.length);
+    } catch (e) {
+      logger.error(`TopicsManager.store promises reject ${e}`);
+      return Promise.reject(e);
+    }
   }
   /**
      * delete - will delete the topic matching the provided topicId
@@ -342,15 +341,15 @@ class TopicsManager {
               dList.push(
                 cli.zrem({
                   key: RedisKeys.topicsListByClientId(clientId),
-                  members: [topicKey]
-                })
+                  members: [topicKey],
+                }),
               ); // deletes the topic-client association
             }
           },
           e => {
             logger.error(`TopicsManager.delete hget ${e}`);
             reject(e);
-          }
+          },
         );
         // delete current topic's feeds
         const feedsManager = new FeedsManager();
@@ -365,7 +364,7 @@ class TopicsManager {
           e => {
             logger.error(`TopicsManager.delete feedsManager.reset reject ${e}`);
             reject(e);
-          }
+          },
         );
         Promise.all(dList).then(
           () => {
@@ -375,7 +374,7 @@ class TopicsManager {
           e => {
             logger.error(`TopicsManager.delete dList reject ${e}`);
             reject(e);
-          }
+          },
         );
       }
     });
