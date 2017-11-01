@@ -14,10 +14,13 @@
     "prettier": "prettier-eslint --write \"src/**/*.js\" --list-different",
     "precommit": "lint-staged"
   },
-  "maintainers": ["Michel Tresseras <m.tresseras@gmail.com>"],
+  "maintainers": [
+    "Michel Tresseras <m.tresseras@gmail.com>"
+  ],
   "author": "",
   "homepage": "https://github.com/MichaelTSS/sweetwork-scheduler",
   "dependencies": {
+    "ajv": "^5.3.0",
     "async": "^2.5.0",
     "axios": "0.16.2",
     "body-parser": "1.15.x",
@@ -36,6 +39,7 @@
     "query-string": "5.0.0",
     "sweetwork-redis-client": "1.x.x",
     "sweetwork-utils": "1.x.x",
+    "validate": "^3.0.1",
     "winston": "2.2.x"
   },
   "devDependencies": {
@@ -59,6 +63,9 @@
     "supertest": "2.0.x"
   },
   "lint-staged": {
-    "src/**/*.js": ["prettier-eslint --write", "git add"]
+    "src/**/*.js": [
+      "prettier-eslint --write",
+      "git add"
+    ]
   }
 }

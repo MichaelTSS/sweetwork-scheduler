@@ -1,30 +1,23 @@
 /* eslint-disable max-len, no-param-reassign, no-underscore-dangle */
 
+const fs = require('fs');
 const moment = require('moment-timezone');
-const _ = require('lodash');
+const mysql = require('mysql');
+const Ajv = require('ajv');
 
 const config = require('../../config');
 const RedisKeys = require('../../redis-keys');
 const logger = require('winston').loggers.get('scheduler-logger');
 const RedisClient = require('sweetwork-redis-client');
 const FeedsManager = require('./feeds-manager');
+const utils = require('../../utils');
 
+const ajv = new Ajv({ allErrors: true });
 const cli = new RedisClient(
   config.get('SVC_SCHEDULER_REDIS_HOST'),
   config.get('SVC_SCHEDULER_REDIS_PORT'),
   config.get('REDIS_DB'),
 );
-
-const TOPIC_DEL_FIELDS = ['last_time_crawl', 'keywords_json'];
-const TOPIC_PROFILES_JSON_FIELDS = [
-  'included_profiles',
-  'restricted_profiles',
-  'excluded_profiles',
-];
-const TOPIC_JSON_FIELDS = ['custom', 'or', 'and', 'exclude'];
-const TOPIC_ARRAY_FIELDS = ['sources', 'languages', 'countries'];
-const TOPIC_NUMBER_FIELDS = ['client_id'];
-
 class TopicsManagerError extends Error {
   constructor(m) {
     super(m);
@@ -33,8 +26,32 @@ class TopicsManagerError extends Error {
   }
 }
 
+const connection = mysql.createConnection({
+  host: config.get('MYSQL:host'),
+  user: config.get('MYSQL:user'),
+  password: config.get('MYSQL:password'),
+  database: config.get('MYSQL:database'),
+  charset: config.get('MYSQL:charset'),
+  ssl: {
+    ca: fs.readFileSync(config.get('MYSQL:ssl:ca')),
+    cert: fs.readFileSync(config.get('MYSQL:ssl:cert')),
+    key: fs.readFileSync(config.get('MYSQL:ssl:key')),
+  },
+});
+
 class TopicsManager {
-  // constructor() {}
+  constructor(topic) {
+    if (!topic) {
+      throw new Error('Missing topic argument');
+    }
+    this.topic = topic;
+  }
+  static validate(topic) {
+    const isValid = ajv.validate(utils.topicSchema, topic);
+    if (!isValid) {
+      throw new Error(ajv.errorsText());
+    }
+  }
   /**
      * _computreReadTimeGrade - method that casts array fields to string fields.
      * Necessary tweet since Redis' key-value store nature does not allow
@@ -43,167 +60,89 @@ class TopicsManager {
      * @param  {integer} lastTimeCrawl mandatory unix timestamp of the last time this topic's were crawled
      * @return {string} grade from 'A' thru 'F'
      */
-  static _computreReadTimeGrade(lastTimeCrawl) {
-    const duration = moment
-      .duration(moment() - moment.unix(lastTimeCrawl))
-      .asSeconds();
-    if (duration > 3600) return 'F';
-    else if (duration > 1800) {
-      // over 1 hour
-      return 'E';
-    } else if (duration > 600) {
-      // < 1 hour
-      return 'D';
-    } else if (duration > 300) {
-      // < 30 min
-      return 'C';
-    } else if (duration > 180) {
-      // < 10 min
-      return 'B'; // < 5 min
-    }
-    return 'A'; // < 2 min
+  static _computreReadTimeGrade() {
+    throw new Error('Not Implemented');
+    // const duration = moment
+    //   .duration(moment() - moment.unix(lastTimeCrawl))
+    //   .asSeconds();
+    // if (duration > 3600) return 'F';
+    // else if (duration > 1800) {
+    //   // over 1 hour
+    //   return 'E';
+    // } else if (duration > 600) {
+    //   // < 1 hour
+    //   return 'D';
+    // } else if (duration > 300) {
+    //   // < 30 min
+    //   return 'C';
+    // } else if (duration > 180) {
+    //   // < 10 min
+    //   return 'B'; // < 5 min
+    // }
+    // return 'A'; // < 2 min
   }
-  /**
-     * _preStoreProcess - method that casts array fields to string fields.
-     * Necessary tweet since Redis' key-value store nature does not allow
-     * non-string values (like arrays) to be stored.
-     *
-     * @param  {object} topicHash mandatory
-     * @return {object} topicHash
-     */
-  static _preStoreProcess(topicHash) {
-    if (topicHash && Array.isArray(topicHash.keywords_json)) {
-      const keywordsCs = [];
-      topicHash.keywords_json.filter(x => Array.isArray(x.block)).forEach(t => {
-        t.block.filter(x => x.cs === 'true').forEach(b => {
-          keywordsCs.push(['"', b.content, '"'].join(''));
-        });
-      });
-      topicHash.keywords_cs = `(${keywordsCs.join(' OR ')})`;
-    }
-    TOPIC_ARRAY_FIELDS.forEach(field => {
-      if (topicHash && Array.isArray(topicHash[field]))
-        topicHash[field] = topicHash[field].join(',');
-    });
-    TOPIC_DEL_FIELDS.forEach(field => {
-      if (topicHash) delete topicHash[field];
-    });
-    TOPIC_JSON_FIELDS.forEach(field => {
-      if (topicHash)
-        topicHash[field] = topicHash[field]
-          ? JSON.stringify(topicHash[field])
-          : JSON.stringify([]);
-    });
-    TOPIC_PROFILES_JSON_FIELDS.forEach(field => {
-      if (topicHash && Array.isArray(topicHash[field])) {
-        try {
-          const profiles = [];
-          topicHash[field].forEach(profile => {
-            const p = {
-              id: profile.id,
-              full_name: profile.full_name,
-              rss: [],
-              accounts: [],
-            };
-            if (Array.isArray(profile.rss)) {
-              profile.rss.forEach(rss => {
-                p.rss.push({
-                  id: rss.url,
-                  network: 'rss',
-                });
-              });
-            }
-            if (Array.isArray(profile.accounts)) {
-              profile.accounts.forEach(account => {
-                p.accounts.push({
-                  id: account.original_platform_user_id,
-                  network: account.network,
-                });
-              });
-            }
-            profiles.push(p);
-          });
-          topicHash[field] = JSON.stringify(profiles);
-        } catch (e) {
-          logger.warn(`Could not JSON.stringify ${field}: ${e}`);
-        }
-      }
-    });
-    return topicHash;
+  //
+  static jsonToRedis(topic) {
+    topic = JSON.parse(JSON.stringify(topic));
+    const response = {
+      id: String(topic.id),
+      name: topic.name,
+      sources: topic.sources.join(','),
+      projectId: String(topic.projectId),
+    };
+    if (response.id === 'undefined') delete response.id;
+    return response;
   }
-  /**
-     * _postStoreProcess - method that casts strings fields to arrays or number fields.
-     *
-     * @param  {object} topicHash mandatory
-     * @return {object} topicHash
-     */
-  static _postStoreProcess(topicHash) {
-    TOPIC_ARRAY_FIELDS.forEach(field => {
-      if (topicHash && topicHash[field] && topicHash[field].split)
-        topicHash[field] = topicHash[field].split(',');
-      else if (topicHash[field] === '') topicHash[field] = [];
-    });
-    TOPIC_NUMBER_FIELDS.forEach(field => {
-      if (
-        topicHash &&
-        topicHash[field] &&
-        isFinite(parseInt(topicHash[field], 10))
-      ) {
-        topicHash[field] = parseInt(topicHash[field], 10);
-      }
-    });
-    TOPIC_JSON_FIELDS.forEach(field => {
-      try {
-        if (topicHash) topicHash[field] = JSON.parse(topicHash[field]);
-      } catch (e) {
-        logger.warn(`Could not JSON.parse ${field}: ${JSON.stringify(e)}`);
-      }
-    });
-    TOPIC_PROFILES_JSON_FIELDS.forEach(field => {
-      if (
-        topicHash &&
-        topicHash[field] &&
-        typeof topicHash[field] === 'string'
-      ) {
-        try {
-          topicHash[field] = JSON.parse(topicHash[field]);
-        } catch (e) {
-          logger.warn(`Could not JSON.parse ${field}: ${JSON.stringify(e)}`);
-        }
-      }
-    });
-    if (topicHash.feeds && topicHash.feeds.length > 0) {
-      // last_time_crawl
-      const lastTimeCrawl = Math.round(
-        _.meanBy(topicHash.feeds, x => x.last_time_crawl),
-      ); // cf. https://lodash.com/docs/4.16.4#meanBy
-      if (isFinite(lastTimeCrawl)) topicHash.last_time_crawl = lastTimeCrawl;
-      else topicHash.last_time_crawl = null;
-      // density
-      const density = Math.round(_.meanBy(topicHash.feeds, x => x.density));
-      if (isFinite(density)) topicHash.density = density;
-      else topicHash.density = null;
-      // last time crawl human
-      if (topicHash.last_time_crawl)
-        topicHash.last_time_crawl_human = moment
-          .unix(topicHash.last_time_crawl)
-          .fromNow();
-      else topicHash.last_time_crawl_human = null;
+  //
+  static jsonToSQL(topic) {
+    topic = JSON.parse(JSON.stringify(topic));
+    const response = {
+      id: topic.id,
+      name: topic.name,
+      words: topic.words.join(','),
+      accounts: topic.accounts.map(a => `${a.source}:${a.id}`).join(','),
+      sources: topic.sources.join(','),
+      createdAt: topic.createdAt || moment().unix(),
+      updatedAt: topic.updatedAt || moment().unix(),
+      projectId: topic.projectId,
+    };
+    if (!response.id) delete response.id;
+    return response;
+  }
+  //
+  static sqlToJSON(topic) {
+    topic = JSON.parse(JSON.stringify(topic));
+    let accounts = [];
+    if (topic.accounts.length > 0) {
+      accounts = topic.accounts
+        .split(',')
+        .map(a => ({ id: a.split(':')[1], source: a.split(':')[0] }));
     }
-    return topicHash;
+    const response = {
+      id: topic.id,
+      name: topic.name,
+      words: topic.words.split(','),
+      accounts,
+      sources: topic.sources.split(','),
+      createdAt: topic.createdAt,
+      updatedAt: topic.updatedAt,
+      projectId: topic.projectId,
+    };
+    if (!response.id) delete response.id;
+    return response;
   }
   /**
      * get - retrieves a list of topics matching the arguments. This method
      * implements the concept of precedence: a provided topicId will be used
-     * over a clientId, itself over a feedId.
+     * over a projectId, itself over a feedId.
      * None of the arguments are mandatory, but at least one must be proveded
      *
-     * @param  {number} clientId optional
+     * @param  {number} projectId optional
      * @param  {number} topicId optional
      * @param  {number} feedId optional
      * @return {function} promise - resolves with an array of topics or rejects with an error
      */
-  static async get(clientId, topicIds = [], withoutFeeds = false) {
+  static async get(projectId, topicIds = [], withoutFeeds = false) {
     // logger.info(`Gettings topics for topicIds ${JSON.stringify(topicIds)}`);
     async function getTopicsKeys(cId, tIds) {
       // 1.1 get the topics from the topics ids
@@ -224,37 +163,38 @@ class TopicsManager {
       }
       // 1.3 fail because there is no data
       const error = new TopicsManagerError(
-        'Missing parameters: clientId or topicIds',
+        'Missing parameters: projectId or topicIds',
       );
       return Promise.reject(error);
     }
     //
     try {
-      const topicKeys = await getTopicsKeys(clientId, topicIds);
+      const topicKeys = await getTopicsKeys(projectId, topicIds);
       if (topicKeys.length === 0) {
         return Promise.resolve([]);
       }
-      const topics = [];
       const promises = [];
+      const topics = [];
       topicKeys.forEach(topicKey => {
         promises.push(
           new Promise(async (rslv, rjct) => {
             try {
               // 1. get the hash with data for that topic
-              let topicHash = await cli.hgetall({ key: topicKey });
+              const topicHash = await cli.hgetall({ key: topicKey });
               // 1.1 ignore if that hash is null
               if (topicHash === null) {
                 rslv();
                 return;
               }
+              const topic = await TopicsManager.getFromMysql(topicHash.id);
               // 2. make that hash "human friendly"
-              topicHash = TopicsManager._postStoreProcess(topicHash);
+              // topicHash = TopicsManager._postStoreProcess(topicHash);
               // 3. get the feeds (or ignore the feeds)
               if (!withoutFeeds) {
-                const feedManager = new FeedsManager(topicHash);
-                topicHash.feeds = await feedManager.read();
+                const feedManager = new FeedsManager(topic);
+                topic.feeds = await feedManager.read();
               }
-              topics.push(topicHash);
+              topics.push(topic);
               rslv();
               // 4. done
             } catch (e) {
@@ -272,6 +212,56 @@ class TopicsManager {
       return Promise.reject(e);
     }
   }
+  static async getFromMysql(topicId) {
+    return new Promise(async (resolve, reject) => {
+      connection.query(
+        'SELECT * FROM Topics WHERE ?',
+        { id: topicId },
+        async (error, results) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          const result = TopicsManager.sqlToJSON(results[0]);
+          resolve(result);
+        },
+      );
+    });
+  }
+  static async storeInMysql(row) {
+    return new Promise(async (resolve, reject) => {
+      connection.query(
+        'INSERT INTO Topics SET ?',
+        row,
+        async (error, response) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          TopicsManager.getFromMysql(response.insertId).then(resolve, reject);
+        },
+      );
+    });
+  }
+  static async updateInMysql(row) {
+    /* eslint-disable prefer-destructuring */
+    const id = row.id;
+    delete row.id;
+    return new Promise((resolve, reject) => {
+      row.updatedAt = moment().unix();
+      connection.query(
+        'UPDATE Topics SET ? WHERE ?',
+        [row, { id }],
+        async error => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          TopicsManager.getFromMysql(id).then(resolve, reject);
+        },
+      );
+    });
+  }
   /**
      * store - will store the array of topics passed as an argument
      *
@@ -279,31 +269,34 @@ class TopicsManager {
      * @return {function} promise
      */
   static async store(topics) {
-    const promises = [];
-    if (!topics || !Array.isArray(topics) || topics.length === 0) {
-      const err = new TopicsManagerError('Missing topics in request body');
-      return Promise.reject(err);
+    if (!topics) {
+      const error = new TopicsManagerError('Missing topics argument');
+      return Promise.reject(error);
     }
-    topics.forEach(topic => {
+    const promises = [];
+    //
+    topics.forEach(async topic => {
       promises.push(
         new Promise(async (resolve, reject) => {
           try {
+            // store actual topic in SQL
+            const row = TopicsManager.jsonToSQL(topic);
+            const result = await TopicsManager.storeInMysql(row);
             // store the topic-client association
             await cli.zadd({
-              key: RedisKeys.topicsListByClientId(topic.client_id),
-              scomembers: [moment().unix(), RedisKeys.topic(topic.id)],
+              key: RedisKeys.topicsListByClientId(result.projectId),
+              scomembers: [moment().unix(), RedisKeys.topic(result.id)],
+            });
+            // store actual topic in Redis
+            const hash = TopicsManager.jsonToRedis(result);
+            await cli.hmset({
+              key: RedisKeys.topic(hash.id),
+              hash,
             });
             // update feeds
-            const feedsManager = new FeedsManager(topic);
+            const feedsManager = new FeedsManager(result);
             await feedsManager.update();
-            // store actual topic
-            const topicToStore = this._preStoreProcess(topic);
-            // logger.info(`Creating topic ${JSON.stringify(topicToStore)}`);
-            await cli.hmset({
-              key: RedisKeys.topic(topicToStore.id),
-              hash: topicToStore,
-            });
-            resolve();
+            resolve(result);
           } catch (e) {
             reject(e);
           }
@@ -312,10 +305,53 @@ class TopicsManager {
     });
     //
     try {
-      await Promise.all(promises);
-      return Promise.resolve(topics.length);
+      const results = await Promise.all(promises);
+      return Promise.resolve(results);
     } catch (e) {
       logger.error(`TopicsManager.store promises reject ${e}`);
+      return Promise.reject(e);
+    }
+  }
+  /**
+     * update - will update the topic passed as an argument
+     *
+     * @param  {array} topics mandatory, array of topic objects to be stored
+     * @return {function} promise
+     */
+  static async update(topic) {
+    /* eslint-disable prefer-destructuring */
+    try {
+      const id = topic.id;
+      delete topic.id;
+      if (!topic) {
+        const error = new TopicsManagerError('Missing topic argument');
+        return Promise.reject(error);
+      }
+      if (!id) {
+        const error = new TopicsManagerError('Missing id argument');
+        return Promise.reject(error);
+      }
+      // store actual topic in SQL
+      const row = TopicsManager.jsonToSQL(Object.assign(topic, { id }));
+      const result = await TopicsManager.updateInMysql(
+        Object.assign(row, { id }),
+      );
+      // store the topic-client association
+      await cli.zadd({
+        key: RedisKeys.topicsListByClientId(result.projectId),
+        scomembers: [moment().unix(), RedisKeys.topic(result.id)],
+      });
+      // store actual topic in Redis
+      const hash = TopicsManager.jsonToRedis(result);
+      await cli.hmset({
+        key: RedisKeys.topic(hash.id),
+        hash,
+      });
+      // update feeds
+      const feedsManager = new FeedsManager(result);
+      await feedsManager.update();
+      return Promise.resolve(result);
+    } catch (e) {
       return Promise.reject(e);
     }
   }
@@ -325,59 +361,47 @@ class TopicsManager {
      * @param  {number} topicId mandatory
      * @return {function} promise
      */
-  static delete(topicId) {
-    const dList = [];
-    return new Promise((resolve, reject) => {
-      if (!topicId || topicId === 'undefined') {
-        const err = new TopicsManagerError('Missing topicId route argument');
-        reject(err);
-      } else {
-        const topicKey = RedisKeys.topic(topicId);
-        cli.hget({ key: topicKey, field: 'client_id' }).then(
-          clientId => {
-            if (clientId === null) {
-              dList.push(Promise.resolve());
-            } else {
-              dList.push(
-                cli.zrem({
-                  key: RedisKeys.topicsListByClientId(clientId),
-                  members: [topicKey],
-                }),
-              ); // deletes the topic-client association
-            }
-          },
-          e => {
-            logger.error(`TopicsManager.delete hget ${e}`);
-            reject(e);
-          },
-        );
-        // delete current topic's feeds
-        const feedsManager = new FeedsManager();
-        feedsManager.reset(topicId).then(
-          topicHash => {
-            if (feedsManager.topic === null) {
-              dList.push(Promise.resolve());
-            } else {
-              dList.push(feedsManager.delete());
-            }
-          },
-          e => {
-            logger.error(`TopicsManager.delete feedsManager.reset reject ${e}`);
-            reject(e);
-          },
-        );
-        Promise.all(dList).then(
-          () => {
-            // delete actual topic
-            cli.del({ key: topicKey }).then(() => resolve());
-          },
-          e => {
-            logger.error(`TopicsManager.delete dList reject ${e}`);
-            reject(e);
-          },
-        );
+  static async delete(topicId) {
+    try {
+      if (!topicId) {
+        const error = new TopicsManagerError('Missing topicId argument');
+        return Promise.reject(error);
       }
-    });
+      const topicKey = RedisKeys.topic(topicId);
+      // delete the topic-client association
+      const projectId = await cli.hget({ key: topicKey, field: 'projectId' });
+      if (projectId !== null) {
+        await cli.zrem({
+          key: RedisKeys.topicsListByClientId(projectId),
+          members: [topicKey],
+        });
+      }
+      // workaround to instanciate FeedsManager with a topic
+      const feedsManager = new FeedsManager();
+      await feedsManager.reset(topicId);
+      // delete current topic's feeds
+      await feedsManager.delete();
+      // delete actual topic in Redis
+      await cli.del({ key: topicKey });
+      // delete actual topic in SQL
+      return new Promise((resolve, reject) => {
+        connection.query(
+          'DELETE FROM Topics WHERE ?',
+          { id: topicId },
+          async error => {
+            // connection.end();
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve();
+          },
+        );
+      });
+    } catch (e) {
+      logger.error(`TopicsManager.delete promises reject ${e}`);
+      return Promise.reject(e);
+    }
   }
 }
 

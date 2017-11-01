@@ -1,5 +1,5 @@
 /* eslint-disable max-len, quote-props, no-param-reassign, no-underscore-dangle */
-'use strict';
+
 const moment = require('moment-timezone');
 const config = require('../../config');
 
@@ -7,358 +7,226 @@ const RedisKeys = require('../../redis-keys');
 const logger = require('winston').loggers.get('scheduler-logger');
 const RedisClient = require('sweetwork-redis-client');
 
-const cli = new RedisClient(config.get('SVC_SCHEDULER_REDIS_HOST'), config.get('SVC_SCHEDULER_REDIS_PORT'), config.get('REDIS_DB'));
-
-const FEED_ARRAY_FIELDS = ['languages', 'countries'];
-const TOPIC_PROFILES_JSON_FIELDS = ['included_profiles', 'restricted_profiles', 'excluded_profiles'];
-const FEED_NUMBER_FIELDS = ['timestamp_from', 'timestamp_to', 'last_time_crawl', 'num_results', 'density'];
-const SUPPORTED_SEARCH_SOCIAL_NETWORKS = ['twitter', 'instagram', 'googlenews', 'googleplus'];
-// const SUPPORTED_SEARCH_SOCIAL_NETWORKS = ['twitter', 'instagram', 'facebook', 'googlenews', 'googleplus', 'youtube'];
-
-/**
- * getSearchItems - get array of tuples to compose feed Keys
- *
- * @param  {object} mandatory of type topic
- * @return {array}
- */
-function getSearchItems(topic) {
-    // TODO generate smart feed generation per source here
-    // Ex: For Twitter, include boolean operators using the JSON.stringify way
-    const searchItems = [];
-    // authors
-    TOPIC_PROFILES_JSON_FIELDS.forEach(field => {
-        if (Array.isArray(topic[field])) {
-            topic[field].forEach(profile => {
-                if (Array.isArray(profile.accounts)) {
-                    profile.accounts.forEach(account => {
-                        const id = account.original_platform_user_id || account.id;
-                        searchItems.push([id, account.network]);
-                    });
-                }
-                if (Array.isArray(profile.rss)) {
-                    profile.rss.forEach(rss => {
-                        searchItems.push([rss.url, 'rss']);
-                    });
-                }
-            });
-        }
-    });
-    // custom
-    if (Array.isArray(topic.custom)) {
-        topic.custom.forEach(hash => {
-            if (hash.manual) {
-                if (hash.type === 'facebook_feed') {
-                    searchItems.push([hash.content.split('facebook.com/')[1], 'facebook']);
-                } else if (hash.type === 'rss') {
-                    searchItems.push([hash.content, 'rss']);
-                } else {
-                    logger.info(`Custom: ${JSON.stringify(hash)}`);
-                }
-            }
-        });
-    }
-    // keywords
-    // logger.info(`${JSON.stringify(topic.sources)}`);
-    if (!topic.restricted_profiles || !Array.isArray(topic.restricted_profiles) || topic.restricted_profiles.length === 0) {
-        if (Array.isArray(topic.sources)) {
-            topic.sources.forEach(source => {
-                if (SUPPORTED_SEARCH_SOCIAL_NETWORKS.includes(source)) {
-                    if (Array.isArray(topic.or)) {
-                        // simple keywords search
-                        topic.or.forEach(or => {
-                            or.content.replace(/#/g, '');
-                            searchItems.push([or.content, source]);
-                        });
-                    }
-                    if (Array.isArray(topic.and)) {
-                        // simple keywords search
-                        topic.and.forEach(and => {
-                            and.content.replace(/#/g, '');
-                            searchItems.push([and.content, source]);
-                        });
-                    }
-                    if (Array.isArray(topic.keywords_json)) {
-                        // advanced keywords search
-                        topic.keywords_json.forEach(hash => {
-                            if (hash.type === 'filter' && hash.filter !== 'exclude') {
-                                if (Array.isArray(hash.block)) {
-                                    hash.block.forEach(bloc => {
-                                        if (bloc.content) {
-                                            bloc.content = bloc.content.replace(/#/g, '');
-                                            searchItems.push([bloc.content, source]);
-                                        }
-                                    });
-                                }
-                            }
-                        });
-                    }
-                } else {
-                    logger.error(`${source} not supported`);
-                }
-            });
-        }
-    }
-    return searchItems;
-}
+const cli = new RedisClient(
+  config.get('SVC_SCHEDULER_REDIS_HOST'),
+  config.get('SVC_SCHEDULER_REDIS_PORT'),
+  config.get('REDIS_DB'),
+);
 
 class FeedsManager {
-    constructor(topic) {
-        // this class gets, sets and deletes feeds for a given topic
-        if (topic) this.topic = topic;
+  constructor(topic) {
+    this.topic = topic;
+  }
+  //
+  static getSearchItems(topic) {
+    const searchItems = [];
+    topic.accounts.forEach(a => {
+      searchItems.push({ id: a.id, source: a.source, entity: 'author' });
+    });
+    topic.sources.forEach(source => {
+      topic.words.forEach(id => {
+        searchItems.push({ id, source, entity: 'result' });
+      });
+    });
+    return searchItems;
+  }
+  checkValidation() {
+    if (this.topic === null) {
+      logger.warn('topic in null in FeedsManager class instance');
+    } else if (!this.topic.id) {
+      logger.warn('topicId in undefined in FeedsManager class instance');
     }
-    /**
-     * _postStoreProcess - method that casts strings fields to arrays or number fields.
-     *
-     * @param  {object} mandatory, topic object
-     * @param  {boolean} optional, defaults to false, will enrich topics with additional meta data
-     * @return {object} topic object
-     */
-    _postStoreProcess(feedHash) {
-        FEED_ARRAY_FIELDS.forEach(field => {
-            if (feedHash && feedHash[field] && feedHash[field].split) feedHash[field] = feedHash[field].split(',');
-            else if (feedHash[field] === '') feedHash[field] = [];
-        });
-        FEED_NUMBER_FIELDS.forEach(field => {
-            if (feedHash && feedHash[field] && isFinite(parseInt(feedHash[field], 10))) feedHash[field] = parseInt(feedHash[field], 10);
-        });
-        if (feedHash.last_time_crawl) {
-            feedHash.last_time_crawl_human = moment.unix(feedHash.last_time_crawl).fromNow();
-        }
-        return feedHash;
+  }
+  //
+  async reset(topicId, topic) {
+    try {
+      if (!topic) {
+        topic = await cli.hgetall({ key: RedisKeys.topic(topicId) });
+      }
+      this.topic = topic;
+      this.checkValidation();
+      return Promise.resolve();
+    } catch (e) {
+      return Promise.reject(e);
     }
-    /**
-     * get - retrieves a list of feed matching the arguments. This method
-     * implements the concept of precedence: a provided feedId will be used
-     * over a topicId
-     *
-     * @param  {number} topicId
-     * @param  {number} feedId
-     * @param  {boolean} withMeta will enrich feeds with additional meta data
-     * @return {promise} resolves with an array of feeds or rejects with an error
-     */
-    reset(topicId, topic) {
-        return new Promise((resolve, reject) => {
-            if (topic) {
-                this.topic = topic;
-                resolve();
-            } else {
-                cli.hgetall({ key: RedisKeys.topic(topicId) }).then(
-                    topicHash => {
-                        this.topic = topicHash;
-                        resolve();
-                    },
-                    err => reject(err)
-                );
-            }
-        });
+  }
+  /**
+   * read - this methods reads all feeds linked to the topicId at this.topic.id
+   *
+   * @return {promise}
+   */
+  async read() {
+    try {
+      this.checkValidation();
+      const feedsByTopicKey = RedisKeys.feedsListByTopicId(this.topic.id);
+      const feedsKeysList = await cli.zrangebyscore({
+        key: feedsByTopicKey,
+        withscores: false,
+      });
+      const promises = [];
+      feedsKeysList.forEach(key => {
+        // iterate though feeds of current topic
+        promises.push(cli.hgetall({ key }));
+      });
+      const feedHashes = await Promise.all(promises);
+      return Promise.resolve(feedHashes);
+    } catch (e) {
+      logger.error(e);
+      return Promise.reject(e);
     }
-    /**
-     * read - this methods reads all feeds linked to the topicId at this.topic.id
-     *
-     * @return {promise}
-     */
-    read() {
-        const that = this;
-        const dList = [];
-        return new Promise((resolve, reject) => {
-            const feedsKeyList = RedisKeys.feedsListByTopicId(this.topic.id);
-            cli.zrangebyscore({ key: feedsKeyList, withscores: false }).then(
-                feedKeysList => {
-                    if (Array.isArray(feedKeysList)) {
-                        if (feedKeysList.length === 0) {
-                            dList.push(Promise.resolve());
-                        } else {
-                            feedKeysList.forEach(feedKey => {
-                                // iterate though feeds of current topic
-                                dList.push(cli.hgetall({ key: feedKey }));
-                            });
-                        }
-                    } else {
-                        dList.push(Promise.resolve());
-                    }
-                    Promise.all(dList).then(
-                        feeds => {
-                            const processedFeeds = [];
-                            feeds.forEach(feed => {
-                                if (feed) processedFeeds.push(that._postStoreProcess(feed));
-                            });
-                            resolve(processedFeeds);
-                        },
-                        e => reject(e)
-                    );
-                },
-                e => reject(e)
-            );
-        });
-    }
-    /**
+  }
+  /**
      * update - this methods updates all necessary feeds linked to topic object at this.topic
      *
      * @return {promise}
      */
-    update() {
-        const that = this;
-        return that.delete().then(
-            // return Promise.resolve().then(
-            () => that.store.call(that),
-            e => {
-                logger.error(`FeedsManager.update that.delete reject ${e}`);
-                return Promise.reject(e);
-            }
-        );
+  async update() {
+    try {
+      this.checkValidation();
+      await this.delete();
+      await this.store();
+      return Promise.resolve();
+    } catch (e) {
+      logger.error(`FeedsManager.update() reject ${e}`);
+      return Promise.reject(e);
     }
-    /**
+  }
+  /**
      * store - this methods create all necessary feeds linked to topic object at this.topic
      *
      * @return {promise}
      */
-    store() {
-        const that = this;
-        const dList = [];
-        const unixNow = moment().unix();
-        // for each feed key get list of topic keys
-        const searchItems = getSearchItems(that.topic);
-        // logger.info(`Storing ${searchItems.length} associated feed(s) ${JSON.stringify(searchItems)}`);
-        // logger.info(`Creating feeds for topic id ${JSON.stringify(that.topic.id)}`);
-        searchItems.forEach(searchItem => {
-            // store feed hash
-            let entity = 'result';
-            if (isFinite(parseInt(searchItem[0], 10))) entity = 'author';
-            else if (searchItem[1] === 'rss') entity = 'author';
-            const feedHash = {
-                source: searchItem[1],
-                id: searchItem[0],
-                entity,
-                languages: that.topic.languages,
-                countries: that.topic.countries
-            };
-            const feedKey = RedisKeys.feed(searchItem[0], searchItem[1]);
-            // logger.info(`Creating feed ${JSON.stringify(feedHash)}`);
-            dList.push(cli.hmset({ key: feedKey, hash: feedHash }));
-
-            // add feed key to topics list
-            const topicKey = RedisKeys.topic(that.topic.id);
-            const topicsListByFeedKey = RedisKeys.topicListByFeedIdSource(searchItem[0], searchItem[1]);
-            dList.push(cli.zadd({ key: topicsListByFeedKey, scomembers: [unixNow, topicKey] }));
-            // logger.info(`added feedKey ${topicKey} at ${topicsListByFeedKey}`);
-
-            // add topic key to feed list
-            const feedsListByTopicKey = RedisKeys.feedsListByTopicId(that.topic.id);
-            dList.push(cli.zadd({ key: feedsListByTopicKey, scomembers: [unixNow, feedKey] }));
-            // logger.info(`added feedKey ${feedKey} at ${feedsListByTopicKey}`);
-
-            // add feed key to feeds list unless it's there
-            const feedsList = RedisKeys.feedsList();
-            dList.push(
-                new Promise((resolve, reject) => {
-                    cli.zscore({ key: feedsList, member: feedKey }).then(
-                        score => {
-                            if (score === null) {
-                                // logger.info(`adding feedKey ${feedKey} at ${feedsList}`);
-                                cli.zadd({ key: feedsList, scomembers: [unixNow, feedKey] }).then(
-                                    () => resolve(),
-                                    e => {
-                                        logger.error(`FeedsManager.store zadd ${e}`);
-                                        reject();
-                                    }
-                                );
-                            } else {
-                                // logger.info(`score ${score} feedKey ${feedKey} already present at ${feedsList}`);
-                                resolve();
-                            }
-                        },
-                        e => {
-                            logger.error(`FeedsManager.update zscore ${e}`);
-                            reject();
-                        }
-                    );
-                })
-            );
-
-            // remove feed key from the deleted feeds list
-            const deletedFeedsList = RedisKeys.deletedFeedsList();
-            dList.push(cli.zrem({ key: deletedFeedsList, members: [feedKey] }));
-        });
-        return Promise.all(dList);
+  async store() {
+    try {
+      this.checkValidation();
+      const unixNow = moment().unix();
+      const searchItems = FeedsManager.getSearchItems(this.topic);
+      //
+      const promises = [];
+      searchItems.forEach(feedHash => {
+        promises.push(
+          new Promise(async (resolve, reject) => {
+            try {
+              const feedKey = RedisKeys.feed(feedHash.id, feedHash.source);
+              await cli.hmset({
+                key: feedKey,
+                hash: Object.assign(feedHash, { status: 'sleep' }),
+              });
+              // add feed key to topics list
+              const topicKey = RedisKeys.topic(this.topic.id);
+              const topicsListByFeedKey = RedisKeys.topicListByFeedIdSource(
+                feedHash.id,
+                feedHash.source,
+              );
+              await cli.zadd({
+                key: topicsListByFeedKey,
+                scomembers: [unixNow, topicKey],
+              });
+              // add topic key to feed list
+              const feedsListByTopicKey = RedisKeys.feedsListByTopicId(
+                this.topic.id,
+              );
+              await cli.zadd({
+                key: feedsListByTopicKey,
+                scomembers: [unixNow, feedKey],
+              });
+              // add to feedsList
+              const feedsList = RedisKeys.feedsList();
+              const score = await cli.zscore({
+                key: feedsList,
+                member: feedKey,
+              });
+              if (score === null) {
+                await cli.zadd({
+                  key: feedsList,
+                  scomembers: [unixNow, feedKey],
+                });
+              }
+              // remove from to deletedFeedsList
+              const deletedFeedsList = RedisKeys.deletedFeedsList();
+              await cli.zrem({ key: deletedFeedsList, members: [feedKey] });
+              resolve();
+            } catch (e) {
+              logger.error(e);
+              reject();
+            }
+          }),
+        );
+      });
+      return Promise.all(promises);
+    } catch (e) {
+      return Promise.reject(e);
     }
-    /**
+  }
+  /**
      * delete - this methods deletes all feeds linked to the topicId at this.topic.id
      *
      * @return {promise}
      */
-    delete() {
-        // logger.info('Deleting feeds');
-        const dList = [];
-        const dDeepList = [];
-        const topicKey = RedisKeys.topic(this.topic.id);
-        const feedsKeyList = RedisKeys.feedsListByTopicId(this.topic.id);
-        const feedsList = RedisKeys.feedsList();
-        const deletedFeedsList = RedisKeys.deletedFeedsList();
-        const unixNow = moment().unix();
-        return new Promise((resolve, reject) => {
-            cli.zrangebyscore({ key: feedsKeyList, withscores: false }).then(
-                feedKeysList => {
-                    if (Array.isArray(feedKeysList)) {
-                        if (feedKeysList.length === 0) {
-                            // logger.info(`Current topic ${this.topic.id} has no associated feed to delete`);
-                            resolve(); // all right ! there is no feeds to remove
-                        } else {
-                            // logger.info(`Current topic ${this.topic.id} has ${feedKeysList.length} associated feed(s) to delete`);
-                            feedKeysList.forEach(feedKey => {
-                                // iterate though feeds of current topic
-                                cli.hgetall({ key: feedKey }).then(
-                                    feedHash => {
-                                        const topicsListByFeedKey = RedisKeys.topicListByFeedIdSource(feedHash.id, feedHash.source);
-                                        cli.zcount({ key: topicsListByFeedKey }).then(
-                                            count => {
-                                                // count the number of OTHER topics associated with this feed
-                                                if (count === 1) {
-                                                    // all right ! only one topic
-                                                    dDeepList.push(cli.del({ key: topicsListByFeedKey }));
-                                                    dDeepList.push(cli.hset({ key: feedKey, field: 'status', value: 'sleep' }));
-                                                    dDeepList.push(cli.zrem({ key: feedsList, members: [feedKey] }));
-                                                    dDeepList.push(cli.zadd({ key: deletedFeedsList, scomembers: [unixNow, feedKey] }));
-                                                    // logger.info(`Removing this feed: ${feedKey} for good`);
-                                                } else {
-                                                    // careful! this feed is associated with other topics
-                                                    dDeepList.push(cli.zrem({ key: topicsListByFeedKey, members: [topicKey] }));
-                                                    // logger.info(`Removing topics but keeping this feed: ${feedKey}`);
-                                                }
-                                                dList.push(Promise.resolve());
-                                            },
-                                            e => {
-                                                logger.error(`FeedsManager.delete zcount ${e}`);
-                                                dList.push(Promise.reject(e));
-                                            }
-                                        );
-                                    },
-                                    e => {
-                                        logger.error(`FeedsManager.delete hgetall ${e}`);
-                                        reject(e);
-                                        return;
-                                    }
-                                );
-                            });
-                            Promise.all([...dList, ...dDeepList]).then(
-                                () => {
-                                    // finally, remove the list of feed associated with current topic
-                                    cli.del({ key: feedsKeyList }).then(() => resolve());
-                                },
-                                e => {
-                                    logger.error(`FeedsManager.delete dList && dDeepList reject ${e}`);
-                                    reject(e);
-                                }
-                            );
-                        }
-                    }
-                },
-                e => {
-                    logger.error(`FeedsManager.delete zrangebyscore ${e}`);
-                    reject(e);
-                }
+  async delete() {
+    try {
+      // logger.info('Deleting feeds');
+      if (this.topic === null) return Promise.resolve();
+      this.checkValidation();
+
+      const topicKey = RedisKeys.topic(this.topic.id);
+      const feedsListByTopic = RedisKeys.feedsListByTopicId(this.topic.id);
+      const feedsList = RedisKeys.feedsList();
+      const deletedFeedsList = RedisKeys.deletedFeedsList();
+      const unixNow = moment().unix();
+      //
+      const feedKeysList = await cli.zrangebyscore({
+        key: feedsListByTopic,
+        withscores: false,
+      });
+      if (!feedKeysList) return Promise.resolve();
+      const promises = [];
+      feedKeysList.forEach(async feedKey => {
+        promises.push(
+          new Promise(async resolve => {
+            const feedHash = await cli.hgetall({ key: feedKey });
+            const topicsListByFeedKey = RedisKeys.topicListByFeedIdSource(
+              feedHash.id,
+              feedHash.source,
             );
-        });
+            // remove topic -> feeds relationship
+            await cli.del({ key: feedsListByTopic });
+            // count the number of OTHER topics associated with this feed
+            const count = await cli.zcount({ key: topicsListByFeedKey });
+            if (count === 1) {
+              // all right ! only one topic
+              // remove feed -> topic relationship
+              await cli.del({ key: topicsListByFeedKey });
+              // set the feed to sleep mode
+              await cli.hset({
+                key: feedKey,
+                field: 'status',
+                value: 'sleep',
+              });
+              // removing from feedsList
+              await cli.zrem({ key: feedsList, members: [feedKey] });
+              // adding to deletedFeedsList
+              await cli.zadd({
+                key: deletedFeedsList,
+                scomembers: [unixNow, feedKey],
+              });
+            } else {
+              // careful! this feed is associated with other topics
+              // remove topic-feed relationship
+              await cli.zrem({
+                key: topicsListByFeedKey,
+                members: [topicKey],
+              });
+            }
+            resolve();
+          }),
+        );
+      });
+      return Promise.all(promises);
+    } catch (e) {
+      return Promise.reject();
     }
+  }
 }
 
 module.exports = FeedsManager;

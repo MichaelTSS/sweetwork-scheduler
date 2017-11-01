@@ -90,28 +90,20 @@ router.post(
         throw new Error('Missing id and/or source in req.body');
       }
       const key = RedisKeys.feed(req.body.id, req.body.source);
-      cli.hget({ key, field: 'id' }).then(
-        id => {
-          if (id === null) {
-            const error = new Error('Missing id in feed hash');
-            res
-              .status(500)
-              .json({ success: false, error, where: 'check-if-feed-exists' });
-          } else {
-            next();
-          }
-        },
-        e => {
-          res
-            .status(500)
-            .json({ success: false, error: e, where: 'check-if-feed-exists' });
-        },
-      );
-    } catch (e) {
-      logger.error(e);
+      const id = cli.hget({ key, field: 'id' });
+      if (id === null) {
+        const error = new Error('Missing id in feed hash');
+        res
+          .status(500)
+          .json({ success: false, error, where: 'check-if-feed-exists' });
+      } else {
+        next();
+      }
+    } catch (error) {
+      logger.error(error);
       res
         .status(500)
-        .json({ success: false, error: e, where: 'check-if-feed-exists' });
+        .json({ success: false, error, where: 'check-if-feed-exists' });
     }
   },
   async (req, res, next) => {
@@ -127,34 +119,30 @@ router.post(
           logger.error(
             `Api Service recorded a warning ${JSON.stringify(req.body.error)}`,
           );
-          cli
-            .zadd({
-              key: RedisKeys.feedWarningTicks(
-                req.body.error.clientId,
-                req.body.source,
-              ),
-              scomembers: [
-                String(moment().unix()),
-                JSON.stringify(req.body.error),
-              ],
-            })
-            .catch(e => logger.error(`Warning ticks ${e}`));
+          await cli.zadd({
+            key: RedisKeys.feedWarningTicks(
+              req.body.error.clientId,
+              req.body.source,
+            ),
+            scomembers: [
+              String(moment().unix()),
+              JSON.stringify(req.body.error),
+            ],
+          });
         } else if (req.body.error.name === 'Error') {
           logger.error(
             `Api Service recorded an error ${JSON.stringify(req.body.error)}`,
           );
-          cli
-            .zadd({
-              key: RedisKeys.feedErrorTicks(
-                req.body.error.clientId,
-                req.body.source,
-              ),
-              scomembers: [
-                String(moment().unix()),
-                JSON.stringify(req.body.error),
-              ],
-            })
-            .catch(e => logger.error(`Error ticks ${e}`));
+          await cli.zadd({
+            key: RedisKeys.feedErrorTicks(
+              req.body.error.clientId,
+              req.body.source,
+            ),
+            scomembers: [
+              String(moment().unix()),
+              JSON.stringify(req.body.error),
+            ],
+          });
         } else {
           logger.error(`Oops ${JSON.stringify(req.body.error)}`);
         }
@@ -168,97 +156,89 @@ router.post(
     }
   },
   async (req, res, next) => {
-    logger.debug('Stage 3');
+    logger.debug('Stage 3.0');
     try {
       const key = RedisKeys.feedErrorBands(req.body.id, req.body.source);
-      cli.zcount({ key }).then(count => {
-        if (count === 0) {
-          cli
-            .zadd({ key, scomembers: [req.body.timestamp_from, '0'] })
-            .catch(e => logger.error(`First error band ${e}`));
+      const count = await cli.zcount({ key });
+      if (count === 0) {
+        await cli.zadd({ key, scomembers: [req.body.timestamp_from, '0'] });
+      }
+      // If tthere is no error, but we did find a previous hole, fix it up
+      if (!req.body.error) {
+        const members = await cli.zrangebyscore({
+          key,
+          min: req.body.timestamp_from,
+          max: req.body.timestamp_to,
+        });
+        if (members.length > 0) {
+          await cli.zrem({ key, members });
+          logger.info('Fully recovered!');
         }
-      });
-      if (req.body.error) {
-        // the error
-        let score;
-        if (req.body.ticks.length > 0) {
-          score = Math.round(
-            parseInt(req.body.ticks[req.body.ticks.length - 1], 10) / 1000,
-          );
-          logger.info(
-            'Making/updating a hole because got some data but errored',
-          );
-        } else {
-          logger.info('Making/updating a hole because got no data and errored');
-          score = req.body.timestamp_to;
-        }
-        // If there is a previous hole, no need to create a new one neighbour
-        // of it. Instead, extend the previous one by changing the score only
-        try {
-          cli
-            .zrangebyscore({
-              key,
-              min: req.body.timestamp_from,
-              max: req.body.timestamp_to,
-              withscores: true,
-            })
-            .then(members => {
-              if (members.length > 0) {
-                logger.info(
-                  `Updating a hole. Was from ${moment
-                    .unix(members[0])
-                    .fromNow()}` +
-                    ` to ${moment
-                      .unix(members[1])
-                      .fromNow()}, now to ${moment.unix(score).fromNow()}`,
-                );
-                cli
-                  .zadd({ key, scomembers: [score, members[0]] })
-                  .catch(e => logger.error(`update hole ${e}`));
-              } else {
-                logger.info(
-                  `New hole is from ${moment
-                    .unix(req.body.timestamp_from)
-                    .fromNow()} to ${moment.unix(score).fromNow()}`,
-                );
-                cli
-                  .zadd({
-                    key,
-                    scomembers: [score, String(req.body.timestamp_from)],
-                  })
-                  .catch(e => logger.error(`create hole ${e}`));
-              }
-            });
-        } catch (e) {
-          logger.error(e);
-          res.status(500).json({
-            success: false,
-            error: e,
-            where: 'update-error-plot-bands',
-          });
-        }
-      } else {
-        cli
-          .zrangebyscore({
-            key,
-            min: req.body.timestamp_from,
-            max: req.body.timestamp_to,
-          })
-          .then(members => {
-            if (members.length > 0) {
-              logger.info('Fully recovered!');
-              cli.zrem({ key, members }).catch(logger.error);
-            } else {
-              // logger.info('All went well');
-            }
-          }, logger.error);
       }
       next();
     } catch (e) {
       logger.error(e);
       res
         .status(500)
-        .json({ success: false, error: e, where: 'create-error-plot-bands' });
+        .json({ success: false, error: e, where: 'fix-error-plot-bands' });
+    }
+  },
+  async (req, res, next) => {
+    logger.debug('Stage 3.5');
+    try {
+      const key = RedisKeys.feedErrorBands(req.body.id, req.body.source);
+      const count = await cli.zcount({ key });
+      if (count === 0) {
+        await cli.zadd({ key, scomembers: [req.body.timestamp_from, '0'] });
+      }
+      //
+      // the error
+      let score = req.body.timestamp_to;
+      if (req.body.ticks.length > 0) {
+        score = Math.round(
+          parseInt(req.body.ticks[req.body.ticks.length - 1], 10) / 1000,
+        );
+        logger.warn('Got some data but errored');
+      } else {
+        logger.warn('Got no data and errored');
+      }
+      if (req.body.error) {
+        const members = await cli.zrangebyscore({
+          key,
+          min: req.body.timestamp_from,
+          max: req.body.timestamp_to,
+          withscores: true,
+        });
+        if (members.length > 0) {
+          // existing hole found
+          logger.info(
+            `Updating a hole. Was from ${moment.unix(members[0]).fromNow()}` +
+              ` to ${moment.unix(members[1]).fromNow()}, now to ${moment
+                .unix(score)
+                .fromNow()}`,
+          );
+          await cli.zadd({ key, scomembers: [score, members[0]] });
+        } else {
+          // no previous hole found
+          logger.info(
+            `New hole is from ${moment
+              .unix(req.body.timestamp_from)
+              .fromNow()} to ${moment.unix(score).fromNow()}`,
+          );
+          await cli.zadd({
+            key,
+            scomembers: [score, String(req.body.timestamp_from)],
+          });
+        }
+      }
+      next();
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({
+        success: false,
+        error: e,
+        where: 'create/update-error-plot-bands',
+      });
     }
   },
   async (req, res, next) => {
@@ -271,33 +251,21 @@ router.post(
           String(n),
         ]);
         //
-        cli
-          .zadd({
-            key: RedisKeys.feedTicks(req.body.id, req.body.source),
-            scomembers,
-          })
-          .then(
-            count => {
-              logger.info(`Added ${count} ticks`);
-            },
-            e => logger.error(`Ticks ${e}`),
-          );
+        const count = await cli.zadd({
+          key: RedisKeys.feedTicks(req.body.id, req.body.source),
+          scomembers,
+        });
+        logger.info(`Added ${count} ticks`);
         // to make the efficiency chart
         const scomembersEfficiency = _.flatMap(req.body.ticks, n => [
           moment().diff(n, 'milliseconds'),
           String(Math.round(parseInt(n, 10) / 1000)),
         ]);
-        cli
-          .zadd({
-            key: RedisKeys.feedEfficiencyTicks(req.body.id, req.body.source),
-            scomembers: scomembersEfficiency,
-          })
-          .then(
-            count => {
-              logger.info(`Added ${count} efficiency ticks`);
-            },
-            e => logger.error(`Ticks ${e}`),
-          );
+        const count2 = cli.zadd({
+          key: RedisKeys.feedEfficiencyTicks(req.body.id, req.body.source),
+          scomembers: scomembersEfficiency,
+        });
+        logger.info(`Added ${count2} efficiency ticks`);
       }
       next();
     } catch (e) {
@@ -344,6 +312,7 @@ router.post(
           });
         }
       } else {
+        // Set this feed as idle
         await cli.hmset({
           key: feedKey,
           hash: {
@@ -426,12 +395,10 @@ router.post(
         );
       }
       logger.info(`Next crawl set ${moment.unix(nextTickCrawl).fromNow()}`);
-      cli
-        .zadd({
-          key: RedisKeys.feedsList(),
-          scomembers: [nextTickCrawl, feedKey],
-        })
-        .catch(e => logger.error(`Next crawl ${JSON.stringify(e)}`));
+      await cli.zadd({
+        key: RedisKeys.feedsList(),
+        scomembers: [nextTickCrawl, feedKey],
+      });
       res.status(200).json({ success: true });
     } catch (e) {
       logger.error(e);

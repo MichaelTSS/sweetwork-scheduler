@@ -1,64 +1,57 @@
-/* eslint-disable prefer-arrow-callback, no-unused-expressions,  no-param-reassign */
+/* eslint-disable prefer-arrow-callback, no-unused-expressions, no-param-reassign, func-names, prefer-destructuring */
 const expect = require('chai').expect;
 
 const config = require('../../../app/config');
 const RedisKeys = require('../../../app/redis-keys');
 const RedisClient = require('sweetwork-redis-client');
-config.set('REDIS:db', 1); // 1 is the test db index
-const cli = new RedisClient(config.get('REDIS:host'), config.get('REDIS:port'), config.get('REDIS:db'));
-const TopicsManager = require('../../../app/models/redis/topics-manager');
-const FeedsManager = require('../../../app/models/redis/feeds-manager');
 
-describe('FeedsManager', function () {
-  const topicId = 5678901234567890;
-  const secondTopicId = 8701915463476;
-  const clientId = 123987456876123;
+config.set('REDIS:db', 1); // 1 is the test db index
+config.set('MYSQL:database', 'sweetgcloudtest'); // sweetgcloudtest is the test database
+const cli = new RedisClient(
+  config.get('REDIS:host'),
+  config.get('REDIS:port'),
+  config.get('REDIS:db'),
+);
+const TopicsManager = require('../../../app/models/redis/topics-manager');
+const ProjectsManager = require('../../../app/models/sql/projects-manager');
+
+describe('TopicsManager', function() {
+  let topicId;
+  let secondTopicId;
+  let projectId;
+  const project = {
+    name: 'test--project',
+  };
   const topicsToStore = {
     topics: [
       {
-        id: topicId,
         name: 'test--name',
-        included_profiles: [
+        accounts: [
           {
-            accounts: [
-              {
-                id: 12394867,
-                network: 'instagram'
-              }
-            ]
+            id: '12394867',
+            source: 'instagram',
           },
           {
-            accounts: [
-              {
-                id: 2349687,
-                network: 'instagram'
-              }
-            ]
-          }
+            id: '2349687',
+            source: 'instagram',
+          },
         ],
         sources: ['instagram', 'googleplus'],
-        client_id: clientId,
-        languages: [],
-        countries: [],
-        or: [{ content: 'boa' }, { content: 'python' }, { content: 'arbok' }],
-        and: []
-      }
-    ]
+        projectId,
+        words: ['boa', 'python', 'arbok'],
+      },
+    ],
   };
   const moreTopicsToStore = {
     topics: [
       {
-        id: secondTopicId,
         name: 'test--second-name',
-        included_profiles: [],
+        accounts: [],
         sources: ['googleplus'],
-        client_id: clientId,
-        languages: [],
-        countries: [],
-        or: [],
-        and: [{ content: 'python' }, { content: 'cobra' }]
-      }
-    ]
+        projectId,
+        words: ['python', 'cobra'],
+      },
+    ],
   };
   const feedListToBeStoredInRedis = [
     'hmap:feed:feedSource:instagram:feedId:arbok',
@@ -68,325 +61,202 @@ describe('FeedsManager', function () {
     'hmap:feed:feedSource:instagram:feedId:2349687',
     'hmap:feed:feedSource:googleplus:feedId:arbok',
     'hmap:feed:feedSource:googleplus:feedId:boa',
-    'hmap:feed:feedSource:googleplus:feedId:python'
+    'hmap:feed:feedSource:googleplus:feedId:python',
   ];
   const feedTopicsKeysList = [
     'zset:topicsList:feedSource:instagram:feedId:12394867:timestamp',
-    'zset:topicsList:feedSource:googleplus:feedId:cobra:timestamp',
+    'zset:topicsList:feedSource:googleplus:feedId:python:timestamp',
     'zset:topicsList:feedSource:instagram:feedId:2349687:timestamp',
     'zset:topicsList:feedSource:googleplus:feedId:boa:timestamp',
     'zset:topicsList:feedSource:instagram:feedId:boa:timestamp',
     'zset:topicsList:feedSource:googleplus:feedId:arbok:timestamp',
     'zset:topicsList:feedSource:instagram:feedId:arbok:timestamp',
-    'zset:topicsList:feedSource:instagram:feedId:python:timestamp'
+    'zset:topicsList:feedSource:instagram:feedId:python:timestamp',
   ];
-  const expectedListofFeed = [
+  const expectedListsofFeed = [
     {
       source: 'instagram',
       id: 'arbok',
       entity: 'result',
-      languages: '',
-      countries: ''
+      status: 'sleep',
     },
     {
       source: 'instagram',
       id: 'boa',
       entity: 'result',
-      languages: '',
-      countries: ''
+      status: 'sleep',
     },
     {
       source: 'instagram',
       id: 'python',
       entity: 'result',
-      languages: '',
-      countries: ''
+      status: 'sleep',
     },
     {
       source: 'instagram',
       id: '12394867',
       entity: 'author',
-      languages: '',
-      countries: ''
+      status: 'sleep',
     },
     {
       source: 'instagram',
       id: '2349687',
       entity: 'author',
-      languages: '',
-      countries: ''
+      status: 'sleep',
     },
     {
       source: 'googleplus',
       id: 'arbok',
       entity: 'result',
-      languages: '',
-      countries: ''
+      status: 'sleep',
     },
     {
       source: 'googleplus',
       id: 'boa',
       entity: 'result',
-      languages: '',
-      countries: ''
+      status: 'sleep',
     },
     {
       source: 'googleplus',
       id: 'python',
       entity: 'result',
-      languages: '',
-      countries: ''
-    }
+      status: 'sleep',
+    },
   ];
-  const topicsListByFeedPair = RedisKeys.topicListByFeedIdSource('python', 'googleplus');
+  const topicsListByFeedPair = RedisKeys.topicListByFeedIdSource(
+    'python',
+    'googleplus',
+  );
 
-  describe('Empty and failures', function () {
-    before(function (done) {
-      // topicId
-      const key = RedisKeys.feedsListByTopicId(topicId);
-      cli.zrangebyscore({ key, withscores: false }).then(members => {
-        const dList = [];
-        members.forEach(feedKey => {
-          dList.push(cli.del({ key: feedKey }));
-        });
-        dList.push(cli.del({ key: RedisKeys.topic(topicId) }));
-        dList.push(cli.del({ key }));
-        Promise.all(dList).then(() => done());
+  describe('Create initial topic', function() {
+    before(async () => {
+      const response = await ProjectsManager.create(project);
+      projectId = response.id;
+      topicsToStore.topics[0].projectId = projectId;
+      moreTopicsToStore.topics[0].projectId = projectId;
+    });
+
+    it('should create one topic', async () => {
+      const results = await TopicsManager.store(topicsToStore.topics);
+      topicId = results[0].id;
+      const count = await cli.zcount({
+        key: RedisKeys.topicsListByClientId(projectId),
       });
+      expect(count).to.equal(1);
     });
 
-    before(function (done) {
-      // secondTopicId
-      const key = RedisKeys.feedsListByTopicId(secondTopicId);
-      cli.zrangebyscore({ key, withscores: false }).then(members => {
-        const dList = [];
-        members.forEach(feedKey => {
-          dList.push(cli.del({ key: feedKey }));
-        });
-        dList.push(cli.del({ key: RedisKeys.topic(secondTopicId) }));
-        dList.push(cli.del({ key }));
-        Promise.all(dList).then(() => done());
+    it('should find a list of feed keys in global feeds list', async () => {
+      const members = await cli.zrangebyscore({
+        key: RedisKeys.feedsList(),
+        withscores: false,
       });
+      expect(members).to.deep.have.members(feedListToBeStoredInRedis);
     });
 
-    before(function (done) {
-      // common feeds
-      const dList = [
-        cli.del({ key: RedisKeys.feedsList() }),
-        cli.del({ key: RedisKeys.topicsListByClientId(clientId) }),
-        cli.del({ key: RedisKeys.topicListByFeedIdSource('python', 'googleplus') })
-      ];
-      Promise.all(dList).then(() => done());
-    });
-
-    it('should find no feeds for a non-existing topic_id', function (done) {
-      const feedsManager = new FeedsManager(topicsToStore);
-      const key = RedisKeys.feedsListByTopicId(topicId);
-      feedsManager.read().then(feeds => {
-        expect(feeds).to.be.empty;
-        cli.zcount({ key }).then(count => {
-          expect(count)
-            .to.a('number')
-            .equal(0);
-          done();
-        });
+    it('should find a list of feed keys in the list by topicId (1)', async () => {
+      const members = await cli.zrangebyscore({
+        key: RedisKeys.feedsListByTopicId(topicId),
+        withscores: false,
       });
+      expect(members).to.deep.have.members(feedListToBeStoredInRedis);
     });
 
-    it('should find no feeds in global feeds list', function (done) {
-      cli.zcount({ key: RedisKeys.feedsList() }).then(count => {
-        expect(count)
-          .to.a('number')
-          .equal(0);
-        done();
-      });
-    });
-
-    it('should find no topics for a non-existing topic_id', function (done) {
-      TopicsManager.get(null, [topicId]).then(topics => {
-        expect(topics).to.be.empty;
-        cli.hgetall({ key: RedisKeys.topic(topicId) }).then(topicHash => {
-          expect(topicHash).to.equal(null);
-          done();
-        });
-      });
-    });
-
-    after(function (done) {
-      // topicId
-      const key = RedisKeys.feedsListByTopicId(topicId);
-      cli.zrangebyscore({ key, withscores: false }).then(members => {
-        const dList = [];
-        members.forEach(feedKey => {
-          dList.push(cli.del({ key: feedKey }));
-        });
-        dList.push(cli.del({ key: RedisKeys.topic(topicId) }));
-        dList.push(cli.del({ key }));
-        Promise.all(dList).then(() => done());
-      });
-    });
-
-    after(function (done) {
-      // secondTopicId
-      const key = RedisKeys.feedsListByTopicId(secondTopicId);
-      cli.zrangebyscore({ key, withscores: false }).then(members => {
-        const dList = [];
-        members.forEach(feedKey => {
-          dList.push(cli.del({ key: feedKey }));
-        });
-        dList.push(cli.del({ key: RedisKeys.topic(secondTopicId) }));
-        dList.push(cli.del({ key }));
-        Promise.all(dList).then(() => done());
-      });
-    });
-
-    after(function (done) {
-      // common feeds
-      const dList = [cli.del({ key: RedisKeys.feedsList() }), cli.del({ key: RedisKeys.topicsListByClientId(clientId) })];
-      feedTopicsKeysList.forEach(key => {
-        dList.push(cli.del({ key }));
-      });
-      Promise.all(dList).then(() => done());
-    });
-  });
-
-  describe('Create initial topic', function () {
-    before(function (done) {
-      // topicId
-      const key = RedisKeys.feedsListByTopicId(topicId);
-      cli.zrangebyscore({ key, withscores: false }).then(members => {
-        const dList = [];
-        members.forEach(feedKey => {
-          dList.push(cli.del({ key: feedKey }));
-        });
-        dList.push(cli.del({ key: RedisKeys.topic(topicId) }));
-        dList.push(cli.del({ key }));
-        Promise.all(dList).then(() => done());
-      });
-    });
-
-    before(function (done) {
-      // secondTopicId
-      const key = RedisKeys.feedsListByTopicId(secondTopicId);
-      cli.zrangebyscore({ key, withscores: false }).then(members => {
-        const dList = [];
-        members.forEach(feedKey => {
-          dList.push(cli.del({ key: feedKey }));
-        });
-        dList.push(cli.del({ key: RedisKeys.topic(secondTopicId) }));
-        dList.push(cli.del({ key }));
-        Promise.all(dList).then(() => done());
-      });
-    });
-
-    before(function (done) {
-      // common feeds
-      const dList = [
-        cli.del({ key: RedisKeys.feedsList() }),
-        cli.del({ key: RedisKeys.topicsListByClientId(clientId) }),
-        cli.del({ key: RedisKeys.topicListByFeedIdSource('python', 'googleplus') })
-      ];
-      Promise.all(dList).then(() => done());
-    });
-
-    it('should create one topic', function (done) {
-      TopicsManager.store(topicsToStore.topics).then(() => {
-        cli.zcount({ key: RedisKeys.topicsListByClientId(clientId) }).then(count => {
-          expect(count).to.equal(1);
-          done();
-        });
-      });
-    });
-
-    it('should find a list of feed keys in global feeds list', function (done) {
-      cli.zrangebyscore({ key: RedisKeys.feedsList(), withscores: false }).then(members => {
-        expect(members).to.deep.have.members(feedListToBeStoredInRedis);
-        done();
-      });
-    });
-
-    it('should find a list of feed keys in the list by topicId (1)', function (done) {
-      cli.zrangebyscore({ key: RedisKeys.feedsListByTopicId(topicId), withscores: false }).then(members => {
-        expect(members).to.deep.have.members(feedListToBeStoredInRedis);
-        done();
-      });
-    });
-
-    it('should find a list of feed keys in the list by topicId (2)', function (done) {
-      const dList = [];
+    it('should find a list of feed keys in the list by topicId (2)', async () => {
+      const promises = [];
       feedListToBeStoredInRedis.forEach(key => {
-        dList.push(cli.hgetall({ key }));
+        promises.push(cli.hgetall({ key }));
       });
-      Promise.all(dList).then(results => {
-        expect(results).to.deep.have.members(expectedListofFeed);
-        done();
-      });
+      const results = await Promise.all(promises);
+      expect(results).to.deep.have.members(expectedListsofFeed);
     });
 
-    it('should find list of related topics for a given feed_id/source pair', function (done) {
-      cli.zrangebyscore({ key: topicsListByFeedPair, withscores: false }).then(members => {
-        expect(members.length).to.equal(1);
-        expect(members).to.deep.have.members([RedisKeys.topic(topicId)]);
-        done();
+    it('should find list of related topics for a given feed_id/source pair', async () => {
+      const members = await cli.zrangebyscore({
+        key: topicsListByFeedPair,
+        withscores: false,
       });
+      expect(members.length).to.equal(1);
+      expect(members).to.deep.have.members([RedisKeys.topic(topicId)]);
     });
 
-    it('should create another topic with some shared feed pairs', function (done) {
-      TopicsManager.store(moreTopicsToStore.topics).then(() => {
-        cli.zcount({ key: RedisKeys.topicsListByClientId(clientId) }).then(count => {
-          expect(count).to.equal(2);
-          done();
-        });
+    it('should create another topic with some shared feed pairs', async () => {
+      const results = await TopicsManager.store(moreTopicsToStore.topics);
+      secondTopicId = results[0].id;
+      const count = await cli.zcount({
+        key: RedisKeys.topicsListByClientId(projectId),
       });
+      expect(count).to.equal(2);
     });
 
-    it('should have an updated count of feed keys in global feedsList Zset', function (done) {
-      cli.zrangebyscore({ key: topicsListByFeedPair, withscores: false }).then(members => {
-        expect(members.length).to.equal(2);
-        expect(members).to.deep.have.members([RedisKeys.topic(topicId), RedisKeys.topic(secondTopicId)]);
-        done();
+    it('should have an updated count of feed keys in global feedsList Zset', async () => {
+      const members = await cli.zrangebyscore({
+        key: topicsListByFeedPair,
+        withscores: false,
       });
+      expect(members.length).to.equal(2);
+      expect(members).to.deep.have.members([
+        RedisKeys.topic(topicId),
+        RedisKeys.topic(secondTopicId),
+      ]);
     });
 
-    after(function (done) {
+    after(async () => {
+      // topics
+      await TopicsManager.delete(topicId);
+      await TopicsManager.delete(secondTopicId);
+    });
+
+    after(async () => {
+      // projects
+      await ProjectsManager.delete(projectId);
+    });
+
+    after(async () => {
       // topicId
       const key = RedisKeys.feedsListByTopicId(topicId);
-      cli.zrangebyscore({ key, withscores: false }).then(members => {
-        const dList = [];
-        members.forEach(feedKey => {
-          dList.push(cli.del({ key: feedKey }));
-        });
-        dList.push(cli.del({ key: RedisKeys.topic(topicId) }));
-        dList.push(cli.del({ key }));
-        Promise.all(dList).then(() => done());
+      const members = await cli.zrangebyscore({ key, withscores: false });
+      const promises = [];
+      members.forEach(feedKey => {
+        promises.push(cli.del({ key: feedKey }));
       });
+      promises.push(cli.del({ key: RedisKeys.topic(topicId) }));
+      promises.push(cli.del({ key }));
+      await Promise.all(promises);
     });
 
-    after(function (done) {
+    after(async () => {
       // secondTopicId
       const key = RedisKeys.feedsListByTopicId(secondTopicId);
-      cli.zrangebyscore({ key, withscores: false }).then(members => {
-        const dList = [];
-        members.forEach(feedKey => {
-          dList.push(cli.del({ key: feedKey }));
-        });
-        dList.push(cli.del({ key: RedisKeys.topic(secondTopicId) }));
-        dList.push(cli.del({ key }));
-        Promise.all(dList).then(() => done());
+      const members = await cli.zrangebyscore({ key, withscores: false });
+      const promises = [];
+      members.forEach(feedKey => {
+        promises.push(cli.del({ key: feedKey }));
       });
+      promises.push(cli.del({ key: RedisKeys.topic(secondTopicId) }));
+      promises.push(cli.del({ key }));
+      await Promise.all(promises);
     });
 
-    after(function (done) {
+    after(async () => {
       // common feeds
-      const dList = [
+      const promises = [
         cli.del({ key: RedisKeys.feedsList() }),
-        cli.del({ key: RedisKeys.topicsListByClientId(clientId) }),
-        cli.del({ key: 'zset:topicsList:feedSource:googleplus:feedId:python:timestamp' })
+        cli.del({ key: RedisKeys.topicsListByClientId(projectId) }),
+        cli.del({
+          key: 'zset:topicsList:feedSource:googleplus:feedId:cobra:timestamp',
+        }),
       ];
-      feedTopicsKeysList.forEach(key => {
-        dList.push(cli.del({ key }));
+      const members = await cli.zrangebyscore({
+        key: RedisKeys.deletedFeedsList(),
       });
-      Promise.all(dList).then(() => done());
+      members.forEach(key => {
+        promises.push(cli.del({ key }));
+      });
+      feedTopicsKeysList.forEach(key => {
+        promises.push(cli.del({ key }));
+      });
+      promises.push(cli.del({ key: RedisKeys.deletedFeedsList() }));
+      await Promise.all(promises);
     });
   });
 });
