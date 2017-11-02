@@ -174,16 +174,15 @@ class TopicsManager {
         return Promise.resolve([]);
       }
       const promises = [];
-      const topics = [];
       topicKeys.forEach(topicKey => {
         promises.push(
-          new Promise(async (rslv, rjct) => {
+          new Promise(async (resolve, reject) => {
             try {
               // 1. get the hash with data for that topic
               const topicHash = await cli.hgetall({ key: topicKey });
               // 1.1 ignore if that hash is null
               if (topicHash === null) {
-                rslv();
+                resolve(null);
                 return;
               }
               const topic = await TopicsManager.getFromMysql(topicHash.id);
@@ -194,18 +193,18 @@ class TopicsManager {
                 const feedManager = new FeedsManager(topic);
                 topic.feeds = await feedManager.read();
               }
-              topics.push(topic);
-              rslv();
+              resolve(topic);
               // 4. done
             } catch (e) {
               logger.error(`TopicsManager.get hgetall topicKey (B) ${e}`);
-              rjct(e);
+              reject(e);
             }
           }),
         );
       });
       //
-      await Promise.all(promises);
+      let topics = await Promise.all(promises);
+      topics = topics.filter(x => x !== null);
       return Promise.resolve(topics);
     } catch (e) {
       logger.error(e);

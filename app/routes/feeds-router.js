@@ -163,7 +163,7 @@ router.post(
       if (count === 0) {
         await cli.zadd({ key, scomembers: [req.body.timestamp_from, '0'] });
       }
-      // If tthere is no error, but we did find a previous hole, fix it up
+      // If there is no error, but we did find a previous hole, fix it up
       if (!req.body.error) {
         const members = await cli.zrangebyscore({
           key,
@@ -261,7 +261,7 @@ router.post(
           moment().diff(n, 'milliseconds'),
           String(Math.round(parseInt(n, 10) / 1000)),
         ]);
-        const count2 = cli.zadd({
+        const count2 = await cli.zadd({
           key: RedisKeys.feedEfficiencyTicks(req.body.id, req.body.source),
           scomembers: scomembersEfficiency,
         });

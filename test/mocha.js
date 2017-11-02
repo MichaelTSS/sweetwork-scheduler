@@ -11,5 +11,5 @@ require('./models/redis/feeds-manager-delete-first-topic-test');
 require('./models/redis/feeds-manager-delete-one-topic-test');
 // REST tests
 require('./routes/auth-middleware-test');
-require('./routes/feeds-router-test');
+require('./routes/feeds-and-metrics-router-test');
 require('./routes/topics-router-test');

@@ -25,8 +25,8 @@ describe('POST Feeds', function() {
     id: feedId,
     source: feedSource,
     entity: feedEntity,
-    timestamp_from: 1476801854, // October 18, 2016, 4:44:14 PM
-    timestamp_to: 1476841454, // October 19, 2016, 3:44:14 AM
+    timestamp_from: 1506801854, // October 18, 2016, 4:44:14 PM
+    timestamp_to: 1506841454, // October 19, 2016, 3:44:14 AM
     num_results: 0,
     ticks: [],
   };
@@ -35,10 +35,10 @@ describe('POST Feeds', function() {
     id: feedId,
     source: feedSource,
     entity: feedEntity,
-    timestamp_from: 1476801854, // October 18, 2016, 4:44:14 PM
-    timestamp_to: 1478886254, // November 11, 2016, 6:44:14 PM
+    timestamp_from: 1506801854, // October 18, 2016, 4:44:14 PM
+    timestamp_to: 1508886254, // November 11, 2016, 6:44:14 PM
     num_results: 5,
-    ticks: [1478335454000, 1477208654000, 1476863054000, 1476841454000],
+    ticks: [1508335454000, 1507208654000, 1506863054000, 1506841454000],
     error: {
       name: 'Error',
       message: 'No more available accounts',
@@ -50,8 +50,8 @@ describe('POST Feeds', function() {
     id: feedId,
     source: feedSource,
     entity: feedEntity,
-    timestamp_from: 1476801854, // October 18, 2016, 4:44:14 PM
-    timestamp_to: 1478792654, // November 10, 2016, 4:44:14 PM
+    timestamp_from: 1506801854, // October 18, 2016, 4:44:14 PM
+    timestamp_to: 1508792654, // November 10, 2016, 4:44:14 PM
     num_results: 0,
     ticks: [],
     error: {
@@ -65,8 +65,8 @@ describe('POST Feeds', function() {
     id: feedId,
     source: feedSource,
     entity: feedEntity,
-    timestamp_from: 1476801854, // October 18, 2016, 4:44:14 PM
-    timestamp_to: 1478357054, // November 5, 2016, 4:44:14 PM
+    timestamp_from: 1506801854, // October 18, 2016, 4:44:14 PM
+    timestamp_to: 1508357054, // November 5, 2016, 4:44:14 PM
     num_results: 0,
     ticks: [],
     error: {
@@ -80,10 +80,10 @@ describe('POST Feeds', function() {
     id: feedId,
     source: feedSource,
     entity: feedEntity,
-    timestamp_from: 1470667454, // August 8, 2016, 4:44:14 PM
-    timestamp_to: 1476715558, // October 10, 2016, 4:45:58 PM
+    timestamp_from: 1500667454, // August 8, 2016, 4:44:14 PM
+    timestamp_to: 1506715558, // October 10, 2016, 4:45:58 PM
     num_results: 4,
-    ticks: [1474209854000, 1472913854000, 1472481854000, 1471704254000], // all those ticks are between timestamp_from and timestamp_to
+    ticks: [1504209854000, 1502913854000, 1502481854000, 1501704254000], // all those ticks are between timestamp_from and timestamp_to
   };
 
   before(function(done) {
@@ -115,55 +115,9 @@ describe('POST Feeds', function() {
         id: feedId,
         source: feedSource,
         entity: feedEntity,
-        languages: '',
-        countries: '',
+        status: 'sleep',
       },
     });
-  });
-
-  before(async () => {
-    // clear error ticks
-    const key = RedisKeys.feedWarningTicks(feedClientId, feedSource);
-    const members = await cli.zrangebyscore({ key, withscores: false });
-    if (members.length > 0) {
-      await cli.zrem({ key, members });
-    }
-  });
-
-  before(async () => {
-    // clear error ticks
-    const key = RedisKeys.feedErrorTicks(feedClientId, feedSource);
-    const members = await cli.zrangebyscore({ key, withscores: false });
-    if (members.length > 0) {
-      await cli.zrem({ key, members });
-    }
-  });
-
-  before(async () => {
-    // clear error ticks
-    const key = RedisKeys.feedsList(feedId, feedSource);
-    const members = await cli.zrangebyscore({ key, withscores: false });
-    if (members.length > 0) {
-      await cli.zrem({ key, members });
-    }
-  });
-
-  before(async () => {
-    // clear error plotbands
-    const key = RedisKeys.feedErrorBands(feedId, feedSource);
-    const members = await cli.zrangebyscore({ key, withscores: false });
-    if (members.length > 0) {
-      await cli.zrem({ key, members });
-    }
-  });
-
-  before(async () => {
-    // clear ticks
-    const key = RedisKeys.feedTicks(feedId, feedSource);
-    const members = await cli.zrangebyscore({ key, withscores: false });
-    if (members.length > 0) {
-      await cli.zrem({ key, members });
-    }
   });
 
   it(`GET /api/v1/metrics?id=${feedId}&sources=${feedSource}&entities=${feedEntity}`, function(
@@ -217,10 +171,10 @@ describe('POST Feeds', function() {
         expect(res.body.metrics.series).to.deep.equal([
           {
             data: [
-              [1471644000000, 1],
-              [1472421600000, 1],
-              [1472853600000, 1],
-              [1474149600000, 1],
+              [1501624800000, 1],
+              [1502402400000, 1],
+              [1502834400000, 1],
+              [1504130400000, 1],
             ],
             id: 'blastoise',
             source: 'instagram',
@@ -235,7 +189,7 @@ describe('POST Feeds', function() {
           {
             status: 'error',
             from: 0,
-            to: 1470667454000, // August 8
+            to: 1500667454000, // August 8
           },
         ]);
         expect(res.body.metrics.plotLines).to.be.empty;
@@ -273,10 +227,10 @@ describe('POST Feeds', function() {
         expect(res.body.metrics.series).to.deep.equal([
           {
             data: [
-              [1471644000000, 1],
-              [1472421600000, 1],
-              [1472853600000, 1],
-              [1474149600000, 1],
+              [1501624800000, 1],
+              [1502402400000, 1],
+              [1502834400000, 1],
+              [1504130400000, 1],
             ],
             id: 'blastoise',
             source: 'instagram',
@@ -291,12 +245,12 @@ describe('POST Feeds', function() {
           {
             status: 'error',
             from: 0,
-            to: 1470667454000, // August 8
+            to: 1500667454000, // August 8
           },
           {
             status: 'error',
-            from: 1476801854000, // October 18
-            to: 1478357054000, // November 5
+            from: 1506801854000, // October 18
+            to: 1508357054000, // November 5
           },
         ]);
         expect(res.body.metrics.plotLines).to.be.empty;
@@ -336,10 +290,10 @@ describe('POST Feeds', function() {
         expect(res.body.metrics.series).to.deep.equal([
           {
             data: [
-              [1471644000000, 1],
-              [1472421600000, 1],
-              [1472853600000, 1],
-              [1474149600000, 1],
+              [1501624800000, 1],
+              [1502402400000, 1],
+              [1502834400000, 1],
+              [1504130400000, 1],
             ],
             id: 'blastoise',
             source: 'instagram',
@@ -354,12 +308,12 @@ describe('POST Feeds', function() {
           {
             status: 'error',
             from: 0,
-            to: 1470667454000, // August 8
+            to: 1500667454000, // August 8
           },
           {
             status: 'error',
-            from: 1476801854000, // October 18
-            to: 1478792654000, // November 10
+            from: 1506801854000, // October 18
+            to: 1508792654000, // November 10
           },
         ]);
         expect(res.body.metrics.plotLines).to.be.empty;
@@ -399,13 +353,13 @@ describe('POST Feeds', function() {
         expect(res.body.metrics.series).to.deep.equal([
           {
             data: [
-              [1471644000000, 1],
-              [1472421600000, 1],
-              [1472853600000, 1],
-              [1474149600000, 1],
-              [1476828000000, 2],
-              [1477173600000, 1],
-              [1478300400000, 1],
+              [1501624800000, 1],
+              [1502402400000, 1],
+              [1502834400000, 1],
+              [1504130400000, 1],
+              [1506808800000, 2],
+              [1507154400000, 1],
+              [1508277600000, 1],
             ],
             id: 'blastoise',
             source: 'instagram',
@@ -420,12 +374,12 @@ describe('POST Feeds', function() {
           {
             status: 'error',
             from: 0,
-            to: 1470667454000, // August 8
+            to: 1500667454000, // August 8
           },
           {
             status: 'error',
-            from: 1476801854000, // October 18
-            to: 1476841454000, // October 19
+            from: 1506801854000, // October 18
+            to: 1506841454000, // October 19
           },
         ]);
         expect(res.body.metrics.plotLines).to.be.empty;
@@ -465,13 +419,13 @@ describe('POST Feeds', function() {
         expect(res.body.metrics.series).to.deep.equal([
           {
             data: [
-              [1471644000000, 1],
-              [1472421600000, 1],
-              [1472853600000, 1],
-              [1474149600000, 1],
-              [1476828000000, 2],
-              [1477173600000, 1],
-              [1478300400000, 1],
+              [1501624800000, 1],
+              [1502402400000, 1],
+              [1502834400000, 1],
+              [1504130400000, 1],
+              [1506808800000, 2],
+              [1507154400000, 1],
+              [1508277600000, 1],
             ],
             id: 'blastoise',
             source: 'instagram',
@@ -486,7 +440,7 @@ describe('POST Feeds', function() {
           {
             status: 'error',
             from: 0,
-            to: 1470667454000, // August 8
+            to: 1500667454000, // August 8
           },
         ]);
         expect(res.body.metrics.plotLines).to.be.empty;
