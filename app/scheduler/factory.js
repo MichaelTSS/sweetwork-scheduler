@@ -44,20 +44,20 @@ module.exports = class Factory {
     this.feedHash.topic_hash = _.transform(
       topicHashes,
       (result, hash) => {
-        (result[hash.client_id] || (result[hash.client_id] = [])).push(hash.id);
+        (result[hash.projectId] || (result[hash.projectId] = [])).push(hash.id);
       },
       {},
     );
-    this.feedHash.languages = _.uniq(
-      _.flattenDeep(
-        topicHashes.map(t => t.languages.split(',').filter(f => !!f)),
-      ),
-    );
-    this.feedHash.countries = _.uniq(
-      _.flattenDeep(
-        topicHashes.map(t => t.languages.split(',').filter(f => !!f)),
-      ),
-    );
+    // this.feedHash.languages = _.uniq(
+    //   _.flattenDeep(
+    //     topicHashes.map(t => t.languages.split(',').filter(f => !!f)),
+    //   ),
+    // );
+    // this.feedHash.countries = _.uniq(
+    //   _.flattenDeep(
+    //     topicHashes.map(t => t.languages.split(',').filter(f => !!f)),
+    //   ),
+    // );
   }
 
   printState() {
@@ -76,8 +76,8 @@ module.exports = class Factory {
       id: this.feedHash.id,
       source: this.feedHash.source,
       entity: this.feedHash.entity,
-      languages: this.feedHash.languages,
-      countries: this.feedHash.countries,
+      // languages: this.feedHash.languages,
+      // countries: this.feedHash.countries,
       topic_hash: this.feedHash.topic_hash,
     };
     try {

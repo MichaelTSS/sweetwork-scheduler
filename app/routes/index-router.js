@@ -14,7 +14,7 @@ const feedsRouter = require('./feeds-router');
 // const configRouter = require('./config-router');
 const metricsRouter = require('./metrics-router');
 const projectsRouter = require('./projects-router');
-// const recoverRouter = require('./recover-router');
+const recoverRouter = require('./recover-router');
 
 router.use(cors());
 
@@ -99,7 +99,7 @@ router.use('/api/v1/topics', topicsRouter);
 router.use('/api/v1/feeds', feedsRouter);
 // router.use('/api/v1/config', configRouter);
 router.use('/api/v1/metrics', metricsRouter);
-// router.use('/api/v1/recover', recoverRouter);
+router.use('/api/v1/recover', recoverRouter);
 router.use('/api/v1/projects', projectsRouter);
 
 module.exports = router;

@@ -243,6 +243,29 @@ class TopicsManager {
       );
     });
   }
+  static async storeInRedis(topic) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        // store the topic-client association
+        await cli.zadd({
+          key: RedisKeys.topicsListByClientId(topic.projectId),
+          scomembers: [moment().unix(), RedisKeys.topic(topic.id)],
+        });
+        // store actual topic in Redis
+        const hash = TopicsManager.jsonToRedis(topic);
+        await cli.hmset({
+          key: RedisKeys.topic(hash.id),
+          hash,
+        });
+        // update feeds
+        const feedsManager = new FeedsManager(topic);
+        await feedsManager.update();
+        resolve(topic);
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
   static async updateInMysql(row) {
     /* eslint-disable prefer-destructuring */
     const id = row.id;
@@ -282,20 +305,7 @@ class TopicsManager {
             // store actual topic in SQL
             const row = TopicsManager.jsonToSQL(topic);
             const result = await TopicsManager.storeInMysql(row);
-            // store the topic-client association
-            await cli.zadd({
-              key: RedisKeys.topicsListByClientId(result.projectId),
-              scomembers: [moment().unix(), RedisKeys.topic(result.id)],
-            });
-            // store actual topic in Redis
-            const hash = TopicsManager.jsonToRedis(result);
-            await cli.hmset({
-              key: RedisKeys.topic(hash.id),
-              hash,
-            });
-            // update feeds
-            const feedsManager = new FeedsManager(result);
-            await feedsManager.update();
+            await TopicsManager.storeInRedis(result);
             resolve(result);
           } catch (e) {
             reject(e);
