@@ -1,28 +1,12 @@
-/* eslint-disable max-len, no-param-reassign, no-underscore-dangle */
-
-const fs = require('fs');
-const mysql = require('mysql');
+/* eslint-disable max-len, no-param-reassign, no-underscore-dangle, prefer-destructuring */
 const router = require('express').Router({ strict: true });
-
-const config = require('../config');
 const logger = require('winston').loggers.get('scheduler-logger');
 const TopicsManager = require('../models/redis/topics-manager');
+const startConnection = require('../utils').startConnection;
 
-const connection = mysql.createConnection({
-  host: config.get('MYSQL:host'),
-  user: config.get('MYSQL:user'),
-  password: config.get('MYSQL:password'),
-  database: config.get('MYSQL:database'),
-  charset: config.get('MYSQL:charset'),
-  ssl: {
-    ca: fs.readFileSync(config.get('MYSQL:ssl:ca')),
-    cert: fs.readFileSync(config.get('MYSQL:ssl:cert')),
-    key: fs.readFileSync(config.get('MYSQL:ssl:key')),
-  },
-});
-
-const getTopicsFromSQL = async () =>
-  new Promise((resolve, reject) => {
+const getTopicsFromSQL = () =>
+  new Promise(async (resolve, reject) => {
+    const connection = await startConnection();
     connection.query('SELECT * FROM Topics', async (error, results) => {
       if (error) {
         reject(error);

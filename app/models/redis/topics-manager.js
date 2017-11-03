@@ -1,10 +1,6 @@
 /* eslint-disable max-len, no-param-reassign, no-underscore-dangle */
-
-const fs = require('fs');
 const moment = require('moment-timezone');
-const mysql = require('mysql');
 const Ajv = require('ajv');
-
 const config = require('../../config');
 const RedisKeys = require('../../redis-keys');
 const logger = require('winston').loggers.get('scheduler-logger');
@@ -25,19 +21,6 @@ class TopicsManagerError extends Error {
     this.name = 'TopicsManagerError';
   }
 }
-
-const connection = mysql.createConnection({
-  host: config.get('MYSQL:host'),
-  user: config.get('MYSQL:user'),
-  password: config.get('MYSQL:password'),
-  database: config.get('MYSQL:database'),
-  charset: config.get('MYSQL:charset'),
-  ssl: {
-    ca: fs.readFileSync(config.get('MYSQL:ssl:ca')),
-    cert: fs.readFileSync(config.get('MYSQL:ssl:cert')),
-    key: fs.readFileSync(config.get('MYSQL:ssl:key')),
-  },
-});
 
 class TopicsManager {
   constructor(topic) {
@@ -211,8 +194,9 @@ class TopicsManager {
       return Promise.reject(e);
     }
   }
-  static async getFromMysql(topicId) {
+  static getFromMysql(topicId) {
     return new Promise(async (resolve, reject) => {
+      const connection = await utils.startConnection();
       connection.query(
         'SELECT * FROM Topics WHERE ?',
         { id: topicId },
@@ -227,8 +211,9 @@ class TopicsManager {
       );
     });
   }
-  static async storeInMysql(row) {
+  static storeInMysql(row) {
     return new Promise(async (resolve, reject) => {
+      const connection = await utils.startConnection();
       connection.query(
         'INSERT INTO Topics SET ?',
         row,
@@ -265,12 +250,13 @@ class TopicsManager {
       }
     });
   }
-  static async updateInMysql(row) {
+  static updateInMysql(row) {
     /* eslint-disable prefer-destructuring */
     const id = row.id;
     delete row.id;
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       row.updatedAt = moment().unix();
+      const connection = await utils.startConnection();
       connection.query(
         'UPDATE Topics SET ? WHERE ?',
         [row, { id }],
@@ -393,12 +379,12 @@ class TopicsManager {
       // delete actual topic in Redis
       await cli.del({ key: topicKey });
       // delete actual topic in SQL
-      return new Promise((resolve, reject) => {
+      return new Promise(async (resolve, reject) => {
+        const connection = await utils.startConnection();
         connection.query(
           'DELETE FROM Topics WHERE ?',
           { id: topicId },
           async error => {
-            // connection.end();
             if (error) {
               reject(error);
               return;

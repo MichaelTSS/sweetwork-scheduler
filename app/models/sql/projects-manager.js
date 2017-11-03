@@ -1,21 +1,6 @@
-/* eslint-disable max-len, no-param-reassign, no-underscore-dangle */
-const fs = require('fs');
+/* eslint-disable max-len, no-param-reassign, no-underscore-dangle, prefer-destructuring */
 const moment = require('moment-timezone');
-const mysql = require('mysql');
-const config = require('../../config');
-
-const connection = mysql.createConnection({
-  host: config.get('MYSQL:host'),
-  user: config.get('MYSQL:user'),
-  password: config.get('MYSQL:password'),
-  database: config.get('MYSQL:database'),
-  charset: config.get('MYSQL:charset'),
-  ssl: {
-    ca: fs.readFileSync(config.get('MYSQL:ssl:ca')),
-    cert: fs.readFileSync(config.get('MYSQL:ssl:cert')),
-    key: fs.readFileSync(config.get('MYSQL:ssl:key')),
-  },
-});
+const startConnection = require('../../utils').startConnection;
 
 class ProjectsManager {
   constructor(topic) {
@@ -36,7 +21,8 @@ class ProjectsManager {
    * or undefined if not found
    */
   static get(projectId) {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
+      const connection = await startConnection();
       connection.query(
         'SELECT * FROM Projects WHERE ?',
         { id: projectId },
@@ -55,8 +41,9 @@ class ProjectsManager {
    * or undefined if not found
    */
   static create(project) {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       const row = ProjectsManager.jsonToSQL(project);
+      const connection = await startConnection();
       connection.query(
         'INSERT INTO Projects SET ?',
         row,
@@ -76,11 +63,12 @@ class ProjectsManager {
    */
   static update(project) {
     /* eslint-disable prefer-destructuring */
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       const id = project.id;
       delete project.id;
       const row = ProjectsManager.jsonToSQL(project);
       row.updatedAt = moment().unix();
+      const connection = await startConnection();
       connection.query(
         'UPDATE Projects SET ? WHERE ?',
         [row, { id }],
@@ -99,7 +87,8 @@ class ProjectsManager {
    * Returns undefined
    */
   static delete(projectId) {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
+      const connection = await startConnection();
       connection.query(
         'DELETE FROM Projects WHERE ?',
         { id: projectId },

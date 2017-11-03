@@ -1,5 +1,9 @@
 /* eslint-disable no-param-reassign */
 const moment = require('moment-timezone');
+const fs = require('fs');
+const mysql = require('mysql');
+const config = require('./config');
+const logger = require('winston').loggers.get('scheduler-logger');
 
 /**
  * computeDensity
@@ -57,8 +61,42 @@ const topicSchema = {
   },
 };
 
+function startConnection() {
+  return new Promise((resolve, reject) => {
+    logger.debug('CONNECTING');
+    const connection = mysql.createConnection({
+      host: config.get('MYSQL:host'),
+      user: config.get('MYSQL:user'),
+      password: config.get('MYSQL:password'),
+      database: config.get('MYSQL:database'),
+      charset: config.get('MYSQL:charset'),
+      ssl: {
+        ca: fs.readFileSync(config.get('MYSQL:ssl:ca')),
+        cert: fs.readFileSync(config.get('MYSQL:ssl:cert')),
+        key: fs.readFileSync(config.get('MYSQL:ssl:key')),
+      },
+    });
+    connection.connect(err => {
+      if (err) {
+        logger.warn('CONNECT FAILED', err.code);
+        resolve(startConnection());
+      } else {
+        logger.debug('CONNECTED');
+        resolve(connection);
+      }
+    });
+    connection.on('error', err => {
+      if (err.fatal) resolve(startConnection());
+      reject(err);
+    });
+  });
+}
+
+startConnection();
+
 module.exports = {
   computeDensity,
   networks,
   topicSchema,
+  startConnection,
 };
