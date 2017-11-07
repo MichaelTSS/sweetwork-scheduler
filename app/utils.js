@@ -92,8 +92,6 @@ function startConnection() {
   });
 }
 
-startConnection();
-
 module.exports = {
   computeDensity,
   networks,

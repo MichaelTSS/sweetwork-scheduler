@@ -217,7 +217,6 @@ router.get(
         res.status(200).json({
           success: true,
           metrics: {
-            hashes,
             series,
             plotBands,
             type: 'spline',
@@ -291,7 +290,6 @@ router.get(
         }),
       );
       const results = await Promise.all(promises).then(x => _.flatten(x));
-      console.log(results); // TODO test when empty
       results.forEach(result => {
         result = JSON.parse(result);
         if (req.body.ids === null || req.body.ids.includes(result.id)) {
