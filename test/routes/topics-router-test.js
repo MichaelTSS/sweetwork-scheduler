@@ -249,6 +249,8 @@ describe('REST Topics', function() {
           expect(res.body.topics[0].id).to.not.be.undefined;
           topicId = res.body.topics[0].id;
           expect(res.body.topics[0].name).to.equal(storedPokemonTopicHash.name);
+          console.log(JSON.stringify(res.body.topics[0].feeds));
+          console.log(JSON.stringify(storedPokemonTopicHash.feeds));
           expect(res.body.topics[0].feeds).to.deep.have.members(
             storedPokemonTopicHash.feeds,
           );

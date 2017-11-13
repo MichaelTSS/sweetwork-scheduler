@@ -328,6 +328,7 @@ class TopicsManager {
       }
       // store actual topic in SQL
       const row = TopicsManager.jsonToSQL(Object.assign(topic, { id }));
+      row.updatedAt = moment().unix();
       const result = await TopicsManager.updateInMysql(
         Object.assign(row, { id }),
       );

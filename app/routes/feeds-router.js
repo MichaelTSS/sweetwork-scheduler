@@ -198,9 +198,9 @@ router.post(
         score = Math.round(
           parseInt(req.body.ticks[req.body.ticks.length - 1], 10) / 1000,
         );
-        logger.warn('Got some data but errored');
+        logger.debug('Got some data');
       } else {
-        logger.warn('Got no data and errored');
+        logger.debug('Got no data');
       }
       if (req.body.error) {
         const members = await cli.zrangebyscore({
@@ -251,6 +251,7 @@ router.post(
           String(n),
         ]);
         //
+        console.log(scomembers);
         const count = await cli.zadd({
           key: RedisKeys.feedTicks(req.body.id, req.body.source),
           scomembers,

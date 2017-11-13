@@ -45,6 +45,7 @@ router.get('/(:topic_id)?', async (req, res) => {
 
 // format checking
 router.post('/', async (req, res) => {
+  logger.info('POST /api/v1/topics');
   try {
     if (!Array.isArray(req.body.topics) || req.body.topics.length === 0) {
       throw new Error('Missing topics in body');
@@ -53,6 +54,31 @@ router.post('/', async (req, res) => {
       TopicManager.validate(topic);
     });
     const results = await TopicManager.store(req.body.topics);
+    res.json({ success: true, topics: results });
+  } catch (e) {
+    res.json({
+      success: false,
+      error: {
+        name: e.name,
+        message: e.message,
+      },
+    });
+  }
+});
+
+// format checking
+router.put('/', async (req, res) => {
+  logger.info('PUT /api/v1/topics');
+  try {
+    if (!Array.isArray(req.body.topics) || req.body.topics.length === 0) {
+      throw new Error('Missing topics in body');
+    }
+    const promises = [];
+    req.body.topics.forEach(topic => {
+      TopicManager.validate(topic);
+      promises.push(TopicManager.update(topic));
+    });
+    const results = Promise.all(promises);
     res.json({ success: true, topics: results });
   } catch (e) {
     res.json({
